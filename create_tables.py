@@ -1,12 +1,29 @@
-# create_tables.py
-from sqlalchemy import create_engine
-from models import Base  # Import your Base from the models.py
-from database import DATABASE_URL  # Assuming you have DATABASE_URL setup in database.py
+from database import engine, Base
+import models
+import pymysql
+import traceback
 
-# Initialize engine with the database URL
-engine = create_engine(DATABASE_URL)
+def create_tables():
+    try:
+        # Test direct connection to MySQL first
+        print("Testing direct MySQL connection...")
+        conn = pymysql.connect(
+            host='127.0.0.1',
+            user='bilal',
+            password='Bilal@2025',
+            database='banking_crm',
+            port=3306
+        )
+        print("Direct MySQL connection successful!")
+        conn.close()
+        
+        # Now try SQLAlchemy
+        print("Creating database tables...")
+        Base.metadata.create_all(bind=engine)
+        print("Tables created successfully!")
+    except Exception as e:
+        print(f"Error creating tables: {e}")
+        print(traceback.format_exc())
 
-# Create tables in the database
-Base.metadata.create_all(engine)
-
-print("Tables created successfully!")
+if __name__ == "__main__":
+    create_tables()
