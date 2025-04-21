@@ -1,6 +1,8 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional,List
 from datetime import date
+import uuid
+from datetime import datetime
 
 class CustomerCreate(BaseModel):
     first_name: str
@@ -23,6 +25,8 @@ class CustomerCreate(BaseModel):
     physical_address: Optional[str] = None
     postal_address: Optional[str] = None
     date_of_birth: Optional[date] = None
+    
+    
     
     
 class CustomerUpdate(BaseModel):
@@ -90,5 +94,47 @@ class TicketCreate(BaseModel):
     
 class TicketType(BaseModel):
     name: str
-    status: str
-    created_at: Optional[date]
+    status: Optional[str] = None
+    created_at: Optional[date] = None
+
+
+class TicketStatus(BaseModel):
+    name: str
+    status : Optional[str] = None
+    created_at: Optional[str]= None
+    
+class ProductTypeModel(BaseModel):
+    name: str
+    status : Optional[str] = None
+    created_at: Optional[str]= None
+    
+
+class ResolutionTypeModel(BaseModel):
+    name: str
+    status: Optional[str] = None
+    created_at: Optional[str] = None
+    product_type_id: int
+    
+
+class TicketCategoryModel(BaseModel):
+    name: str
+    status: Optional[str] = None
+    created_at: Optional[str] = None
+    product_type_id: int
+
+
+class EmailModel(BaseModel):
+    nylas_id: str
+    thread_id: Optional[str] = None
+    subject: Optional[str] = None
+    snippet: Optional[str] = None
+    from_name: Optional[str] = None
+    from_email: Optional[str] = None
+    to_email: Optional[str] = None
+    grant_id: Optional[str] = str(uuid.uuid4())  # Default UUID
+    starred: Optional[bool] = False
+    unread: Optional[bool] = True
+    folders: Optional[List[str]] = []
+    date: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

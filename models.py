@@ -1,8 +1,9 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum, Boolean, Date, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum, Boolean, Date, UniqueConstraint,UUID,JSON,CHAR
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base  # Import Base from database.py
 from sqlalchemy.sql import func
+import uuid
 
 
 class CustomersTable(Base):
@@ -45,6 +46,7 @@ class CustomersTable(Base):
         foreign_keys="CreditCardData.customer_id"
     )
 
+    tickets = relationship("Tickets", back_populates="customer") 
 
 class MobileBankingData(Base):
     __tablename__ = "mobile_banking_data"
@@ -68,6 +70,7 @@ class MobileBankingData(Base):
     __table_args__ = (
         UniqueConstraint("customer_id", "identification_no", "mobile_number", name="uq_customer_identification_mobile"),
     )
+
 
 
 class CreditCardData(Base):
@@ -106,11 +109,24 @@ class ProductTypes(Base):
     __tablename__ = "product_types"
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255))
-    status = Column(String(255),default ="1" )
+    status = Column(String(255), default="1")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     ticket_categories = relationship("TicketCategories", back_populates="product_type")
+    resolution_types = relationship("ResolutionTypes", back_populates="product_type")
+
+
+class ResolutionTypes(Base):
+    __tablename__ = "resolution_types"
     
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    status = Column(String(255), default="1")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    product_type_id = Column(Integer, ForeignKey("product_types.id"))
+    product_type = relationship("ProductTypes", back_populates="resolution_types")
+
+      
     
 class TicketCategories(Base):
     __tablename__ = "ticket_categories"
@@ -122,23 +138,12 @@ class TicketCategories(Base):
 
    # Relationships
     product_type = relationship("ProductTypes", back_populates="ticket_categories")
-    resolution_types = relationship("ResolutionTypes", back_populates="ticket_category")
     
-class ResolutionTypes(Base):
-    __tablename__ = "resolution_types"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    ticket_category_id = Column(Integer, ForeignKey("ticket_categories.id"), nullable=False)
-    name = Column(String(255), nullable=False)
-    status = Column(String(255), default="1")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    ticket_category = relationship("TicketCategories", back_populates="resolution_types") 
+ 
 
 class TicketPriority(Base):
     __tablename__ = "ticket_statuses"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    ticket_category_id = Column(Integer, ForeignKey("ticket_categories.id"), nullable=False)
     name = Column(String(255), nullable=False)
     status = Column(String(255), default="1")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -169,7 +174,6 @@ class Tickets(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     
-    # Foreign keys
     ticket_type_id = Column(Integer, ForeignKey("ticket_types.id"), nullable=False)
     customer_id = Column(Integer, ForeignKey("customers_table.id"), nullable=False) 
     product_type_id = Column(Integer, ForeignKey("product_types.id"), nullable=False)
@@ -193,3 +197,25 @@ class Tickets(Base):
     root_cause = relationship("RootCause")
     root_cause_owner = relationship("RootCauseOwner")
     priority = relationship("TicketPriority")
+    
+
+class Emails(Base):
+    __tablename__ = "emails"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nylas_id = Column(String(255), unique=True, nullable=False)  # Corrected this line
+    thread_id = Column(String(255))
+    subject = Column(Text)
+    snippet = Column(Text)
+    from_name = Column(String(255))
+    from_email = Column(String(255))
+    to_email = Column(String(255))
+    grant_id = Column(CHAR(36), default=lambda: str(uuid.uuid4()))
+    starred = Column(Boolean, default=False)
+    unread = Column(Boolean, default=True)
+    folders = Column(JSON)
+    date = Column(DateTime)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+    

@@ -2,12 +2,12 @@ from fastapi import FastAPI, Depends, Query
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import CustomersTable,Tickets
+from models import CustomersTable,Tickets,TicketTypes,TicketPriority,ProductTypes,ResolutionTypes
 from models import MobileBankingData,CreditCardData
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import joinedload
 from fastapi.middleware.cors import CORSMiddleware
-from schemas.customer import CustomerCreate, CustomerUpdate,TicketCreate
+from schemas.customer import CustomerCreate, CustomerUpdate,TicketCreate,TicketType,TicketStatus,ProductTypeModel,ResolutionTypeModel
 from schemas.customer import MobileCustomerData,CreditCardCustomerData
 from sqlalchemy.exc import IntegrityError
 from typing import Optional
@@ -127,20 +127,61 @@ def update_customer(customer_id: int, data: CustomerUpdate, db: Session = Depend
 
 
 @app.post("/ticket-type/create")
-def create_ticket(data: TicketCreate, db: Session = Depends(get_db)):
-    new_ticket = Tickets(**data.dict())
+def create_ticket(data: TicketType, db: Session = Depends(get_db)):
+    new_ticket_type = TicketTypes(**data.dict(exclude_unset=True))
+    new_ticket_type = TicketTypes(**data.dict(exclude_unset=True))
 
-    db.add(new_ticket)
+    db.add(new_ticket_type)
     try:
         db.commit()
-        db.refresh(new_ticket)
+        db.refresh(new_ticket_type)
     except IntegrityError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail="Error creating ticket")
 
-    return {"message": "Ticket created", "ticket_id": new_ticket.id}
+    return {"message": "Ticket type created", "ticket_id": new_ticket_type.id}
 
 
+@app.post("/ticket-status/create")
+def create_ticket_status(data: TicketStatus, db: Session = Depends(get_db)):
+    new_ticket_status = TicketPriority(**data.dict(exclude_unset=True))
+    db.add(new_ticket_status)
+    try:
+        db.commit()
+        db.refresh(new_ticket_status)
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error creating ticket")
+
+    return {"message": "Ticket Status created", "ticket_status_id": new_ticket_status.id}
+
+
+@app.post("/product-type/create")
+def create_ticket_status(data: ProductTypeModel, db: Session = Depends(get_db)):
+    new_product_type = ProductTypes(**data.dict(exclude_unset=True))
+    db.add(new_product_type)
+    try:
+        db.commit()
+        db.refresh(new_product_type)
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error creating ticket")
+
+    return {"message": "Product Type created", "ticket_status_id": new_product_type.id}
+
+
+@app.post("/resolution-type/create")
+def create_resolution_type(data: ResolutionTypeModel, db: Session = Depends(get_db)):
+    new_resolution_type = ResolutionTypes(**data.dict(exclude_unset=True))
+    db.add(new_resolution_type)
+    try:
+        db.commit()
+        db.refresh(new_resolution_type)
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error creating resolution type")
+
+    return {"message": "Resolution Type created", "resolution_type_id": new_resolution_type.id}
 
 
 
