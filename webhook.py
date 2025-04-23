@@ -15,3 +15,11 @@ async def webhook_verification(challenge: str):
     from fastapi.responses import PlainTextResponse
     return PlainTextResponse(content=challenge)
 
+@app.post("/webhook")
+async def nylas_webhook(request:Request):
+    data = await request.json()
+    print(data)
+
+
+
+
