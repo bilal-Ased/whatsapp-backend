@@ -24,8 +24,6 @@ class Tenant(BaseModel):
     name: str
     email: EmailStr
 
-# Hardcoded list of tenants with their names and emails
-# Replace these with actual tenant information
 TENANTS = [
     Tenant(name="network", email="networkingmughal@gmail.com"),
     Tenant(name="Vertex", email="vertexconnects@gmail.com"),
@@ -41,7 +39,6 @@ def send_email(tenant: Tenant):
     message["To"] = tenant.email
     message["Subject"] = "Rent Payment Reminder - April 2025"
     
-    # Customize email body with tenant's name
     email_body = f"""
 Dear {tenant.name},
 

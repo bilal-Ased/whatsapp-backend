@@ -19,6 +19,11 @@ async def webhook_verification(challenge: str):
 async def nylas_webhook(request:Request):
     data = await request.json()
     print(data)
+    
+@app.post("/webhook-whatsap")
+async def nylas_webhook(request:Request):
+    data = await request.json()
+    print(data)
 
 
 
