@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum, Boolean, Date, UniqueConstraint,UUID,JSON,CHAR
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum, Boolean, Date, UniqueConstraint,UUID,JSON,CHAR,Numeric
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base  # Import Base from database.py
@@ -218,4 +218,113 @@ class Emails(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+
+class Tenants(Base):
+    __tablename__ = "tenants"
     
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    first_name = Column(String(50), nullable=False)
+    last_name = Column(String(50), nullable=False)
+    email = Column(String(100), unique=True)
+    phone = Column(String(20))
+    emergency_contact = Column(String(100))
+    move_in_date = Column(Date, nullable=False)
+    lease_end_date = Column(Date)
+    active_status = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    leases = relationship("Leases", back_populates="tenant")
+    payments = relationship("Payments", back_populates="tenant")
+    
+    def __repr__(self):
+        return f"<Tenant(tenant_id={self.tenant_id}, name={self.first_name} {self.last_name})>"
+    
+
+    
+
+class Properties(Base):
+    __tablename__ = "properties"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    property_name = Column(String(255))
+    address = Column(String(255), nullable=False)  # Missing from your example
+    unit_number = Column(String(20))
+    bedrooms = Column(Integer)  # Changed from int to Integer
+    monthly_rent = Column(Numeric(10, 2), nullable=False)  # Fixed typo in "monthy_rent" and added precision
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    leases = relationship("Leases", back_populates="property")
+    
+
+class Leases(Base):
+    __tablename__ = "leases"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    monthly_rent = Column(Numeric(10, 2), nullable=False)
+    deposit = Column(Numeric(10, 2), nullable=False)
+    lease_document = Column(String(255))
+    status = Column(Enum("active", "expired", "terminated", name="lease_status"), default="active")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    tenant = relationship("Tenants", back_populates="leases")
+    property = relationship("Properties", back_populates="leases")
+    payments = relationship("Payments", back_populates="lease")
+    payment_schedules = relationship("PaymentSchedule", back_populates="lease")
+    
+    def __repr__(self):
+        return f"<Lease(lease_id={self.lease_id}, tenant_id={self.tenant_id}, property_id={self.property_id})>"
+
+
+class Payments(Base):
+    __tablename__ = "payments"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    lease_id = Column(Integer, ForeignKey("leases.id"), nullable=False)
+    payment_date = Column(Date, nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
+    payment_method = Column(Enum("cash", "check", "bank_transfer", "credit_card", "other", name="payment_method_enum"), nullable=False)
+    payment_status = Column(Enum("pending", "completed", "failed", name="payment_status_enum"), default="pending")
+    transaction_reference = Column(String(100))
+    late_fee = Column(Numeric(10, 2), default=0.00)
+    notes = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    tenant = relationship("Tenants", back_populates="payments")
+    lease = relationship("Leases", back_populates="payments")
+    payment_schedule = relationship("PaymentSchedule", back_populates="payment", uselist=False)
+    
+    def __repr__(self):
+        return f"<Payment(payment_id={self.payment_id}, amount={self.amount}, status={self.payment_status})>"
+
+
+class PaymentSchedule(Base):
+    __tablename__ = "payment_schedule"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lease_id = Column(Integer, ForeignKey("leases.id"), nullable=False)
+    due_date = Column(Date, nullable=False)
+    amount_due = Column(Numeric(10, 2), nullable=False)
+    payment_id = Column(Integer, ForeignKey("payments.id"))
+    status = Column(Enum("pending", "paid", "overdue", name="schedule_status_enum"), default="pending")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    lease = relationship("Leases", back_populates="payment_schedules")
+    payment = relationship("Payments", back_populates="payment_schedule")
+    
+    def __repr__(self):
+        return f"<PaymentSchedule(schedule_id={self.schedule_id}, due_date={self.due_date}, amount={self.amount_due})>"

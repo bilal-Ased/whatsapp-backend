@@ -2,15 +2,17 @@ from fastapi import FastAPI, Depends, Query
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import CustomersTable,Tickets,TicketTypes,TicketPriority,ProductTypes,ResolutionTypes
+from models import CustomersTable,Tickets,TicketTypes,TicketPriority,ProductTypes,ResolutionTypes,Tenants,Properties
 from models import MobileBankingData,CreditCardData
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import joinedload
 from fastapi.middleware.cors import CORSMiddleware
-from schemas.customer import CustomerCreate, CustomerUpdate,TicketCreate,TicketType,TicketStatus,ProductTypeModel,ResolutionTypeModel
+from schemas.customer import CustomerCreate, CustomerUpdate,TicketCreate,TicketType,TicketStatus,ProductTypeModel,ResolutionTypeModel,TenantModel,PropertyModel
 from schemas.customer import MobileCustomerData,CreditCardCustomerData
 from sqlalchemy.exc import IntegrityError
-from typing import Optional
+from typing import Optional,List
+from sqlalchemy import or_
+
 
 
 
@@ -198,3 +200,121 @@ def create_ticket(data: TicketCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Error creating ticket")
 
     return {"message": "Ticket created", "ticket_id": new_ticket.id}
+
+
+
+
+# property management code
+
+@app.post("/create-tenant")
+def create_tenant(data: TenantModel, db: Session = Depends(get_db)):
+    new_tenant = Tenants(**data.dict(exclude_unset=True))
+    db.add(new_tenant)
+    try:
+        db.commit()
+        db.refresh(new_tenant)
+    except IntegrityError as e:
+        db.rollback()
+        error_message = str(e.orig)
+        if isinstance(e.orig, Exception):
+            if "unique constraint" in error_message.lower() or "duplicate entry" in error_message.lower():
+                if "email" in error_message.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Email already exists. Please use a different email."
+                    )
+                elif "phone" in error_message.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Phone number already exists. Please use a different phone number."
+                    )
+            else:
+                # Generic error for other integrity issues
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="An error occurred while creating the tenant. Please try again."
+                )
+
+    return {"message": "New tenant created", "new_tenant_id": new_tenant.id}
+
+
+@app.get("/tenants-list", response_model=List[TenantModel])
+def get_tenants(
+    db: Session = Depends(get_db),
+    search: Optional[str] = Query(None, description="Search by name or email")
+):
+    """
+    Get list of tenants with optional search
+    """
+    query = db.query(Tenants)
+    
+    # Apply search filter if provided
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Tenants.first_name.ilike(search_term),
+                Tenants.last_name.ilike(search_term),
+                Tenants.email.ilike(search_term),
+                Tenants.phone.ilike(search_term),
+                Tenants.lease_end_date.ilike(search_term),
+                Tenants.move_in_date.ilike(search_term),
+            )
+        )
+    
+    tenants = query.all()
+    return tenants
+
+
+@app.post("/create-property")
+def create_property(data: PropertyModel, db: Session = Depends(get_db)):
+    new_property = Properties(**data.dict())
+    db.add(new_property)
+    try:
+        db.commit()
+        db.refresh(new_property)
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error creating property")
+
+    return {"message": "Property created", "new_property": new_property.property_name}
+
+
+@app.get("/properties-list", response_model=List[PropertyModel])
+def get_properties(
+    db: Session = Depends(get_db),
+    search: Optional[str] = Query(None, description="Search by name")
+):
+    """
+    Get list of tenants with optional search
+    """
+    query = db.query(Properties)
+    
+    # Apply search filter if provided
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Properties.property_name.ilike(search_term),
+                Properties.address.ilike(search_term),
+                Properties.unit_number.ilike(search_term),
+                Properties.bedrooms.ilike(search_term),
+                Properties.monthly_rent.ilike(search_term),
+            )
+        )
+    
+    properties = query.all()
+    return properties
+
+
+
+@app.get("/total-count")
+def get_total_count(type: str = Query(..., description="Type can be 'tenants' or 'properties'"), db: Session = Depends(get_db)):
+    if type == "properties":
+        count = db.query(Properties).count()
+    elif type == "tenants":
+        count = db.query(Tenants).count()
+    else:
+        raise HTTPException(status_code=400, detail="Invalid type. Use 'tenants' or 'properties'.")
+    
+    return {"type": type, "total_count": count}

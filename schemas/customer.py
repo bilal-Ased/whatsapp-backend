@@ -3,6 +3,8 @@ from typing import Optional,List
 from datetime import date
 import uuid
 from datetime import datetime
+from decimal import Decimal
+
 
 class CustomerCreate(BaseModel):
     first_name: str
@@ -138,3 +140,32 @@ class EmailModel(BaseModel):
     date: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+
+
+class TenantModel(BaseModel):
+    first_name: str
+    last_name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    move_in_date: date
+    lease_end_date: Optional[date] = None
+    active_status: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
+class PropertyModel(BaseModel):
+    property_name: str
+    address: str
+    unit_number: str
+    bedrooms : int 
+    monthly_rent: Decimal
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
