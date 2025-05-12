@@ -145,6 +145,7 @@ class EmailModel(BaseModel):
 
 
 class TenantModel(BaseModel):
+    id: int 
     first_name: str
     last_name: str
     email: Optional[str] = None
@@ -169,3 +170,57 @@ class PropertyModel(BaseModel):
 
     class Config:
         orm_mode = True
+        
+class UserCreate(BaseModel):
+    username: str
+    email: EmailStr
+    phone: str
+    status: bool = True
+    created_at: Optional[datetime] = None
+
+    
+    class Config:
+        orm_mode = True
+        
+        
+class UserLogin(BaseModel):
+    email: str
+    password: str
+    
+class LeaseBase(BaseModel):
+    tenant_id: int
+    property_id: int
+    start_date: date
+    end_date: date
+    monthly_rent: Decimal
+    deposit: Decimal
+    lease_document: Optional[str] = None
+    status: Optional[str] = "active"
+
+class LeaseCreate(LeaseBase):
+    pass
+
+class LeaseOut(LeaseBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class LeaseWithDetails(BaseModel):
+    tenant_name: str
+    tenant_phone: str
+    tenant_email: Optional[str] = None
+    property_name: str
+    start_date: date
+    end_date: date
+    monthly_rent: Decimal
+    deposit: Decimal
+    lease_document: Optional[str] = None
+    status: str
+  
+
+    class Config:
+        extra = "ignore"

@@ -6,6 +6,26 @@ from sqlalchemy.sql import func
 import uuid
 
 
+
+
+
+
+
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(250), unique=True, index=True)
+    email = Column(String(250), unique=True, index=True)  # Ensure email is unique [[3]]
+    phone = Column(String(250), unique=True)  # Optional: Remove `unique=True` if not needed
+    hashed_password = Column(String(200))
+    status = Column(Boolean,default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+
+    
+
 class CustomersTable(Base):
     __tablename__ = "customers_table"
 
@@ -328,3 +348,20 @@ class PaymentSchedule(Base):
     
     def __repr__(self):
         return f"<PaymentSchedule(schedule_id={self.schedule_id}, due_date={self.due_date}, amount={self.amount_due})>"
+    
+    
+# class Notification(Base):
+#     __tablename__ = "notifications"
+    
+#     id = Column(Integer, primary_key=True, index=True)
+#     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+#     title = Column(String(100), nullable=False)
+#     message = Column(String(100), nullable=False)
+#     entity_type = Column(String(100), nullable=False)  # 'tenant', 'property', 'lease', etc.
+#     entity_id = Column(Integer, nullable=False)
+#     action_type = Column(String(100), nullable=False)  # 'created', 'updated', 'deleted'
+#     is_read = Column(Boolean, default=False)
+#     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+#     # Relationship with User
+#     user = relationship("User", back_populates="notifications")
