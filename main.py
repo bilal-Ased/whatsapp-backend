@@ -660,7 +660,32 @@ def get_tenant_leases(
 @app.post("/tickets-data")
 async def tickets_data(request:Request):
     data = await request.json()
-    print(data)
+    customer_name = data.get(customer_name,"").strip()
+    customer_phone = data.get(customer_phone,"")
+    created_by = data.get(created_by,"")
+    location = data.get(location,"").strip()
+    customer_email = data.get("customer_email", "")
+    ticket_status = data.get("status", "")
+    date_created = data.get("date_created")
+    
+    try:
+        created_at = datetime.fromtimestamp(int(date_created) / 1000).strftime('%Y-%m-%d %H:%M:%S')
+    except:
+        created_at = None
+
+    transformed = {
+        "name": customer_name,
+        "number": f"+{customer_phone}" if customer_phone else None,
+        "created_by": created_by,
+        "created_at": created_at,
+        "location": location,
+        "customer_email": customer_email,
+        "ticket_status": ticket_status
+    }
+
+    return transformed
+    
+    
 
 
     
