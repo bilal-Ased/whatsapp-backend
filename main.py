@@ -658,20 +658,25 @@ def get_tenant_leases(
 
 
 @app.post("/tickets-data")
-async def tickets_data(request:Request):
+async def tickets_data(request: Request):
     data = await request.json()
-    customer_name = data.get(customer_name,"").strip()
-    customer_phone = data.get(customer_phone,"")
-    created_by = data.get(created_by,"")
-    location = data.get(location,"").strip()
+    
+    # Properly access dictionary keys
+    customer_name = data.get("customer_name", "").strip()
+    customer_phone = data.get("customer_phone", "")
+    created_by = data.get("created_by", "")
+    location = data.get("location", "").strip()
     customer_email = data.get("customer_email", "")
     ticket_status = data.get("status", "")
     date_created = data.get("date_created")
     
-    try:
-        created_at = datetime.fromtimestamp(int(date_created) / 1000).strftime('%Y-%m-%d %H:%M:%S')
-    except:
-        created_at = None
+    # Handle date conversion safely
+    created_at = None
+    if date_created:
+        try:
+            created_at = datetime.fromtimestamp(int(date_created) / 1000).strftime('%Y-%m-%d %H:%M:%S')
+        except (ValueError, TypeError):
+            pass
 
     transformed = {
         "name": customer_name,
