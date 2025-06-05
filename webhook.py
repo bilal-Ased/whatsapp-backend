@@ -20,10 +20,7 @@ async def nylas_webhook(request:Request):
     data = await request.json()
     print(data)
     
-@app.post("/tickets-data")
-async def tickets_data(request:Request):
-    data = await request.json()
-    print(data)
+
 
 
 

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional,List
+from typing import Optional,List,Literal
 from datetime import date
 import uuid
 from datetime import datetime
@@ -29,6 +29,8 @@ class CustomerCreate(BaseModel):
     date_of_birth: Optional[date] = None
     
     
+    
+
     
     
 class CustomerUpdate(BaseModel):
@@ -224,3 +226,47 @@ class LeaseWithDetails(BaseModel):
 
     class Config:
         extra = "ignore"
+        
+        
+class EmailAttachmentBase(BaseModel):
+    id: str
+    filename: Optional[str] = None
+    content_type: Optional[str] = None
+    size: Optional[int] = None
+    is_inline: Optional[bool] = False
+    created_at: Optional[datetime] = None
+
+class EmailAttachmentRead(EmailAttachmentBase):
+    class Config:
+        orm_mode = True
+
+
+class EmailParticipantBase(BaseModel):
+    participant_type: Literal['from', 'to', 'cc', 'bcc', 'reply_to']
+    email_address: Optional[EmailStr] = None
+    display_name: Optional[str] = None
+
+class EmailParticipantRead(EmailParticipantBase):
+    class Config:
+        orm_mode = True
+
+
+class EmailBase(BaseModel):
+    id: str
+    thread_id: Optional[str] = None
+    grant_id: str
+    subject: Optional[str] = None
+    snippet: Optional[str] = None
+    date: Optional[datetime] = None
+    folder: Optional[str] = None
+    unread: Optional[bool] = False
+    starred: Optional[bool] = False
+    has_attachments: Optional[bool] = False
+    attachment_count: Optional[int] = 0
+
+class EmailRead(EmailBase):
+    attachments: List[EmailAttachmentRead] = []
+    participants: List[EmailParticipantRead] = []
+
+    class Config:
+        orm_mode = True

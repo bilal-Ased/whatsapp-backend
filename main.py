@@ -2,12 +2,12 @@ from fastapi import FastAPI, Depends, Query,Request
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import CustomersTable,Tickets,TicketTypes,TicketPriority,ProductTypes,ResolutionTypes,Tenants,Properties,User,Leases
+from models import CustomersTable,Tickets,TicketTypes,TicketPriority,ProductTypes,ResolutionTypes,Tenants,Properties,User,Leases,Email,EmailAttachment,EmailParticipant
 from models import MobileBankingData,CreditCardData
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import joinedload
 from fastapi.middleware.cors import CORSMiddleware
-from schemas.customer import CustomerCreate, CustomerUpdate,TicketCreate,TicketType,TicketStatus,ProductTypeModel,ResolutionTypeModel,TenantModel,PropertyModel,UserCreate,UserLogin,LeaseBase,LeaseWithDetails
+from schemas.customer import CustomerCreate, CustomerUpdate,TicketCreate,TicketType,TicketStatus,ProductTypeModel,ResolutionTypeModel,TenantModel,PropertyModel,UserCreate,UserLogin,LeaseBase,LeaseWithDetails,EmailRead
 from schemas.customer import MobileCustomerData,CreditCardCustomerData
 from sqlalchemy.exc import IntegrityError
 from typing import Optional,List
@@ -21,6 +21,14 @@ from sqlalchemy import desc
 
 from utils import get_current_user
 from typing import List, Dict, Any
+import httpx
+from pydantic import BaseModel, EmailStr
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from io import StringIO
+import csv
+from fastapi.responses import StreamingResponse
+
 
 
 
@@ -314,7 +322,7 @@ def get_leases(
     if result:
         print("First row attributes:", dir(result[0]))
         print("First row as dict:", result[0]._asdict())
-    else:
+        
         leases_list = [LeaseWithDetails(
         id=row.id,
         start_date=row.start_date,
@@ -687,5 +695,174 @@ async def tickets_data(request:Request):
     
     
 
+NYLAS_GRANT_ID = "e0722923-ae09-4f36-8a04-f85bed5c7ddd"
+NYLAS_API_URL = f"https://api.eu.nylas.com/v3/grants/{NYLAS_GRANT_ID}/messages/send"
+NYLAS_API_TOKEN = "nyk_v0_H3dZasch36zm9XpLwMQ2eOEqcdvTyUdCpXA7s6NSiq3E5iLPtD6XHISwpOridt61"
+
+
+
 
     
+class Recipient(BaseModel):
+    email: EmailStr
+    name: Optional[str] = None
+
+
+class TrackingOptions(BaseModel):
+    opens: Optional[bool] = None
+    links: Optional[bool] = None
+    thread_replies: Optional[bool] = None
+    label: Optional[str] = None
+
+class Attachment(BaseModel):
+    filename: str
+    content: str  # base64 encoded
+    content_type: str
+    
+
+class EmailRequest(BaseModel):
+    subject: str
+    to: List[Recipient]
+    cc: Optional[List[Recipient]] = None
+    bcc: Optional[List[Recipient]] = None
+    reply_to: Optional[List[Recipient]] = None
+    body: str
+    tracking_options: Optional[TrackingOptions] = None
+    attachments: Optional[List[Attachment]] = None
+
+
+
+
+    
+@app.post("/send-email")
+async def send_email(request: EmailRequest):
+    headers = {
+        "Authorization": f"Bearer {NYLAS_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = request.dict(exclude_none=True)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(NYLAS_API_URL, json=payload, headers=headers)
+
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=f"Failed to send email: {response.text}"
+        )
+
+    return {
+        "message": "Email sent successfully",
+        "response": response.json()
+    }
+
+
+
+@app.post("/email-webhook", status_code=status.HTTP_200_OK)
+async def nylas_webhook(request: Request, db: Session = Depends(get_db)):
+    payload = await request.json()
+
+    if payload.get("object") == "message" and payload.get("type") == "message.created":
+        data = payload.get("data", {})
+
+        email_id = data.get("id")
+        thread_id = data.get("thread_id")
+        grant_id = data.get("grant_id")
+        subject = data.get("subject")
+        snippet = data.get("snippet")
+        date = datetime.fromtimestamp(data.get("date") / 1000) if data.get("date") else None
+        folder = data.get("folder", {}).get("display_name", "INBOX")
+        unread = data.get("unread", False)
+        starred = data.get("starred", False)
+        has_attachments = data.get("has_attachments", False)
+        attachment_count = len(data.get("files", []))
+
+        email = Email(
+            id=email_id,
+            thread_id=thread_id,
+            grant_id=grant_id,
+            subject=subject,
+            snippet=snippet,
+            date=date,
+            folder=folder,
+            unread=unread,
+            starred=starred,
+            has_attachments=has_attachments,
+            attachment_count=attachment_count
+        )
+        db.add(email)
+
+        # Participants
+        for ptype in ["from", "to", "cc", "bcc", "reply_to"]:
+            for p in data.get(ptype, []):
+                participant = EmailParticipant(
+                    email_id=email_id,
+                    participant_type=ptype,
+                    email_address=p.get("email"),
+                    display_name=p.get("name")
+                )
+                db.add(participant)
+
+        # Attachments
+        for file in data.get("files", []):
+            attachment = EmailAttachment(
+                id=file["id"],
+                email_id=email_id,
+                filename=file.get("filename"),
+                content_type=file.get("content_type"),
+                size=file.get("size"),
+                is_inline=file.get("is_inline", False)
+            )
+            db.add(attachment)
+
+        db.commit()
+
+    return JSONResponse(content={"status": "ok"})
+
+
+
+@app.get("/emails", response_model=List[EmailRead])
+def get_emails(db: Session = Depends(get_db)):
+    emails = db.query(Email).options(
+        joinedload(Email.attachments),
+        joinedload(Email.participants)
+    ).all()
+    return emails
+
+
+@app.get("/export")
+def export_csv(
+    table: str = Query(...),
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date must be in YYYY-MM-DD format")
+
+    # Basic table name check (optional but recommended)
+    if ";" in table or "--" in table:
+        raise HTTPException(status_code=400, detail="Invalid table name")
+
+    # Raw SQL query
+    query = text(f"SELECT * FROM {table} WHERE created_at BETWEEN :start AND :end")
+    result = db.execute(query, {"start": start, "end": end})
+    rows = result.fetchall()
+    headers = result.keys()
+
+    # Write to CSV
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    output.seek(0)
+
+    filename = f"{table}_{start_date}_to_{end_date}.csv"
+    return StreamingResponse(
+        output,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

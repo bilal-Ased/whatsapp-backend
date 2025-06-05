@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum, Boolean, Date, UniqueConstraint,UUID,JSON,CHAR,Numeric
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum, Boolean, Date, UniqueConstraint,UUID,JSON,CHAR,Numeric,BigInteger
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base  # Import Base from database.py
@@ -219,23 +219,7 @@ class Tickets(Base):
     priority = relationship("TicketPriority")
     
 
-class Emails(Base):
-    __tablename__ = "emails"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    nylas_id = Column(String(255), unique=True, nullable=False)  # Corrected this line
-    thread_id = Column(String(255))
-    subject = Column(Text)
-    snippet = Column(Text)
-    from_name = Column(String(255))
-    from_email = Column(String(255))
-    to_email = Column(String(255))
-    grant_id = Column(CHAR(36), default=lambda: str(uuid.uuid4()))
-    starred = Column(Boolean, default=False)
-    unread = Column(Boolean, default=True)
-    folders = Column(JSON)
-    date = Column(DateTime)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 
 
 
@@ -350,18 +334,60 @@ class PaymentSchedule(Base):
         return f"<PaymentSchedule(schedule_id={self.schedule_id}, due_date={self.due_date}, amount={self.amount_due})>"
     
     
-# class Notification(Base):
-#     __tablename__ = "notifications"
-    
-#     id = Column(Integer, primary_key=True, index=True)
-#     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-#     title = Column(String(100), nullable=False)
-#     message = Column(String(100), nullable=False)
-#     entity_type = Column(String(100), nullable=False)  # 'tenant', 'property', 'lease', etc.
-#     entity_id = Column(Integer, nullable=False)
-#     action_type = Column(String(100), nullable=False)  # 'created', 'updated', 'deleted'
-#     is_read = Column(Boolean, default=False)
-#     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-#     # Relationship with User
-#     user = relationship("User", back_populates="notifications")
+
+class Email(Base):
+    __tablename__ = "emails"
+
+    id = Column(String(255), primary_key=True)  # Nylas message ID
+    thread_id = Column(String(255), index=True)
+    grant_id = Column(String(255), nullable=False, index=True)
+    subject = Column(Text)
+    snippet = Column(String(500))  # Short preview
+    date = Column(DateTime, index=True)
+    folder = Column(String(100), index=True)
+    unread = Column(Boolean, default=False, index=True)
+    starred = Column(Boolean, default=False)
+    has_attachments = Column(Boolean, default=False)
+    attachment_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    participants = relationship("EmailParticipant", back_populates="email", cascade="all, delete-orphan")
+    attachments = relationship("EmailAttachment", back_populates="email", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Email(id='{self.id}', subject='{self.subject}', date='{self.date}')>"
+
+class EmailParticipant(Base):
+    __tablename__ = "email_participants"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    email_id = Column(String(255), ForeignKey("emails.id", ondelete="CASCADE"), index=True)
+    participant_type = Column(Enum('from', 'to', 'cc', 'bcc', 'reply_to', name='participant_type_enum'), index=True)
+    email_address = Column(String(255), index=True)
+    display_name = Column(String(255))
+
+    # Relationships
+    email = relationship("Email", back_populates="participants")
+
+    def __repr__(self):
+        return f"<EmailParticipant(type='{self.participant_type}', address='{self.email_address}')>"
+
+
+class EmailAttachment(Base):
+    __tablename__ = "email_attachments"
+
+    id = Column(String(255), primary_key=True)  # Nylas attachment ID
+    email_id = Column(String(255), ForeignKey("emails.id", ondelete="CASCADE"), index=True)
+    filename = Column(String(500))
+    content_type = Column(String(100), index=True)
+    size = Column(BigInteger)
+    is_inline = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    email = relationship("Email", back_populates="attachments")
+
+    def __repr__(self):
+        return f"<EmailAttachment(filename='{self.filename}', size={self.size})>"
