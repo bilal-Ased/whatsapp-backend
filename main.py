@@ -35,6 +35,8 @@ import logging
 import traceback
 from routers import customer  
 import json 
+from fastapi.responses import PlainTextResponse
+
 
 app = FastAPI()
 
@@ -332,7 +334,19 @@ app.include_router(customer.router)
 #     return {"message": "New ticket created", "new_ticket_id": new_ticket.id}
 
 
+class WebhookData(BaseModel):
+    data: dict
 
+@app.get("/webook")
+async def webhook_verification(challenge: str):
+    print(f"✅ Received verification challenge: {challenge}")
+    return PlainTextResponse(content=challenge)
+
+@app.post("/webhook")
+async def webhook_event(request: Request):
+    payload = await request.json()
+    print("📬 Received event:", payload)
+    return {"status": "ok"}
 
 
 @app.post("/receive-data")
