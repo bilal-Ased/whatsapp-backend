@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
+from fastapi.responses import PlainTextResponse
+
 
 app = FastAPI()
 
@@ -8,17 +10,17 @@ app = FastAPI()
 class WebhookData(BaseModel):
     data: dict
 
-@app.get("/webhook")
+@app.get("/webook")
 async def webhook_verification(challenge: str):
-
-    print(" * Nylas connected to the webhook!")
-    from fastapi.responses import PlainTextResponse
+    print(f"✅ Received verification challenge: {challenge}")
     return PlainTextResponse(content=challenge)
 
 @app.post("/webhook")
-async def nylas_webhook(request:Request):
-    data = await request.json()
-    print(data)
+async def webhook_event(request: Request):
+    payload = await request.json()
+    print("📬 Received event:", payload)
+    return {"status": "ok"}
+
     
 
 

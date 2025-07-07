@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "../outbound-frontend"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}

@@ -1,0 +1,5 @@
+2025-06-20 15:09:29,699 - Received raw POST data: {"apikey": "q2qa7dJayWwlrq6LdyAwpMoZ213", "profileId": "2", "name": "John doe", "number": "+254712345678", "branch": "The Matrix", "agent": "Agent Smith", "product": "Blue pill", "date": "2021-08-18"}
+2025-06-20 15:22:07,795 - Ticket: {"customer_name": "test user", "customer_email": "test-user@sharklasers.com", "customer_phone": "254797686905", "customer_type": "", "customer_rating": "", "company": "", "ticket_id": "TN980700", "location": "", "age": "0", "status": "Resolved", "source": "Voice", "category": "Query", "disposition": "Accounts", "sub_disposition": "Current Account", "comments": "test", "date_created": "1750421600697", "ticket_closure_date": "1750421601566", "created_by": "Dtb Admin", "assigned_to": "Dtb Admin", "ticket_number": "1750421599995x446684889405980700", "asset_name": ""}
+Payload Sent: {"apikey": "q2qa7dJayWwlrq6LdyAwpMoZ213", "profileId": "2", "name": "test user", "number": "+254254797686905", "branch": "", "agent": "Dtb Admin", "product": "", "date": null}
+Response: 401 - {"message":"Unauthorized "}
+
