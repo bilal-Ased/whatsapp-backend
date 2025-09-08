@@ -3,7 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # MySQL connection string
-DATABASE_URL = "mysql+pymysql://bilal:Bilal%402025@127.0.0.1:3306/banking_crm"
+DATABASE_URL = "mysql+pymysql://bilal:Bilal%402025@127.0.0.1:3306/silverfox_db"
 
 # Create engine
 engine = create_engine(

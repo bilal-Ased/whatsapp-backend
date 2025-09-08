@@ -5,7 +5,6 @@ import traceback
 
 def create_tables():
     try:
-        # Test direct connection to MySQL first
         print("Testing direct MySQL connection...")
         conn = pymysql.connect(
             host='127.0.0.1',

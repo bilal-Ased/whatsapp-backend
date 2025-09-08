@@ -1,36 +1,29 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum, Boolean, Date, UniqueConstraint,UUID,JSON,CHAR,Numeric,BigInteger
+from sqlalchemy import (
+    Column, Integer, String, Text, ForeignKey, DateTime, Enum, Boolean, Date,
+    UniqueConstraint, JSON, CHAR, Numeric, BigInteger, text
+)
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from datetime import datetime
-from database import Base  # Import Base from database.py
 from sqlalchemy.sql import func
+from database_prod import Base
 import uuid
-
-
-
-
-
-
 
 class User(Base):
     __tablename__ = "users"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(250), unique=True, index=True)
-    email = Column(String(250), unique=True, index=True)  # Ensure email is unique [[3]]
-    phone = Column(String(250), unique=True)  # Optional: Remove `unique=True` if not needed
+    email = Column(String(250), unique=True, index=True)
+    phone = Column(String(250), unique=True)
     hashed_password = Column(String(200))
-    status = Column(Boolean,default=1)
+    status = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-
-
 
 class Tenants(Base):
     __tablename__ = "tenants"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-
     first_name = Column(String(50), nullable=False)
     last_name = Column(String(50), nullable=False)
     email = Column(String(100), unique=True)
@@ -41,36 +34,27 @@ class Tenants(Base):
     active_status = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
+
     leases = relationship("Leases", back_populates="tenant")
     payments = relationship("Payments", back_populates="tenant")
-    
-    def __repr__(self):
-        return f"<Tenant(tenant_id={self.tenant_id}, name={self.first_name} {self.last_name})>"
-    
-
-    
 
 class Properties(Base):
     __tablename__ = "properties"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     property_name = Column(String(255))
     address = Column(String(255), nullable=False)
     unit_number = Column(String(20))
     bedrooms = Column(Integer)
-    status = Column(Integer, default=1)
     monthly_rent = Column(Numeric(10, 2), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-    # Relationships
+
     leases = relationship("Leases", back_populates="property")
-    
 
 class Leases(Base):
     __tablename__ = "leases"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
@@ -82,22 +66,15 @@ class Leases(Base):
     status = Column(Enum("active", "expired", "terminated", name="lease_status"), default="active")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
+
     tenant = relationship("Tenants", back_populates="leases")
     property = relationship("Properties", back_populates="leases")
     payments = relationship("Payments", back_populates="lease")
     payment_schedules = relationship("PaymentSchedule", back_populates="lease")
-    
-    def __repr__(self):
-        return f"<Lease(lease_id={self.lease_id}, tenant_id={self.tenant_id}, property_id={self.property_id})>"
-
-
-
-
 
 class Payments(Base):
     __tablename__ = "payments"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     lease_id = Column(Integer, ForeignKey("leases.id"), nullable=False)
@@ -110,19 +87,14 @@ class Payments(Base):
     notes = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-    # Relationships
+
     tenant = relationship("Tenants", back_populates="payments")
     lease = relationship("Leases", back_populates="payments")
     payment_schedule = relationship("PaymentSchedule", back_populates="payment", uselist=False)
-    
-    def __repr__(self):
-        return f"<Payment(id={self.id}, amount={self.amount}, status={self.payment_status})>"
-
 
 class PaymentSchedule(Base):
     __tablename__ = "payment_schedule"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     lease_id = Column(Integer, ForeignKey("leases.id"), nullable=False)
     due_date = Column(Date, nullable=False)
@@ -131,25 +103,18 @@ class PaymentSchedule(Base):
     status = Column(Enum("pending", "paid", "overdue", name="schedule_status_enum"), default="pending")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-    # Relationships
+
     lease = relationship("Leases", back_populates="payment_schedules")
     payment = relationship("Payments", back_populates="payment_schedule")
-    
-    def __repr__(self):
-        return f"<PaymentSchedule(id={self.id}, due_date={self.due_date}, amount={self.amount_due})>"
-
-    
-    
 
 class Email(Base):
     __tablename__ = "emails"
 
-    id = Column(String(255), primary_key=True)  # Nylas message ID
+    id = Column(String(255), primary_key=True)
     thread_id = Column(String(255), index=True)
     grant_id = Column(String(255), nullable=False, index=True)
     subject = Column(Text)
-    snippet = Column(String(500))  # Short preview
+    snippet = Column(String(500))
     date = Column(DateTime, index=True)
     folder = Column(String(100), index=True)
     unread = Column(Boolean, default=False, index=True)
@@ -159,12 +124,8 @@ class Email(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # Relationships
     participants = relationship("EmailParticipant", back_populates="email", cascade="all, delete-orphan")
     attachments = relationship("EmailAttachment", back_populates="email", cascade="all, delete-orphan")
-
-    def __repr__(self):
-        return f"<Email(id='{self.id}', subject='{self.subject}', date='{self.date}')>"
 
 class EmailParticipant(Base):
     __tablename__ = "email_participants"
@@ -175,17 +136,12 @@ class EmailParticipant(Base):
     email_address = Column(String(255), index=True)
     display_name = Column(String(255))
 
-    # Relationships
     email = relationship("Email", back_populates="participants")
-
-    def __repr__(self):
-        return f"<EmailParticipant(type='{self.participant_type}', address='{self.email_address}')>"
-
 
 class EmailAttachment(Base):
     __tablename__ = "email_attachments"
 
-    id = Column(String(255), primary_key=True)  # Nylas attachment ID
+    id = Column(String(255), primary_key=True)
     email_id = Column(String(255), ForeignKey("emails.id", ondelete="CASCADE"), index=True)
     filename = Column(String(500))
     content_type = Column(String(100), index=True)
@@ -193,8 +149,4 @@ class EmailAttachment(Base):
     is_inline = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationships
     email = relationship("Email", back_populates="attachments")
-
-    def __repr__(self):
-        return f"<EmailAttachment(filename='{self.filename}', size={self.size})>"
