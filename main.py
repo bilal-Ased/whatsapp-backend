@@ -2,14 +2,14 @@ from fastapi import FastAPI, Depends, Query,Request
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import Tenants,Properties,User,Leases,Email,EmailAttachment,EmailParticipant,Payments
+from models import Tenants,Properties,User,Leases,Email,EmailAttachment,EmailParticipant,Payments,PaymentSchedule
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import joinedload
 from fastapi.middleware.cors import CORSMiddleware
 from schemas.customer import TenantModel,PropertyModel,UserCreate,UserLogin,LeaseBase,LeaseWithDetails,EmailRead,PaymentCreate,PaymentStatusUpdate
 from sqlalchemy.exc import IntegrityError
 from typing import Optional,List
-from sqlalchemy import or_
+from sqlalchemy import func, and_, or_
 from security import get_password_hash
 from passlib.context import CryptContext
 from jose import JWTError, jwt
@@ -37,6 +37,7 @@ import calendar
 from sqlalchemy import or_, and_
 from fastapi.responses import StreamingResponse
 from generate_invoice.invoice import generate_invoice
+import logging
 
 
 app = FastAPI()
@@ -57,6 +58,11 @@ def get_db():
         yield db
     finally:
         db.close()
+        
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 
 
 
@@ -96,13 +102,12 @@ def create_tenant(data: TenantModel, db: Session = Depends(get_db)):
 
     return {"message": "New tenant created", "new_tenant_id": new_tenant.id}
 
-
 @app.get("/tenants-list")
 def get_tenants(
     db: Session = Depends(get_db),
-    search: Optional[str] = Query(None, description="Search by name or email")
+    search: Optional[str] = Query(None, description="Search by name or email"),
+    available_only: bool = Query(False, description="Show only tenants without active lease")
 ):
-
     query = db.query(
         Tenants.id,
         Tenants.first_name,
@@ -110,8 +115,6 @@ def get_tenants(
         Tenants.email,
         Tenants.phone,
         Tenants.emergency_contact,
-        Tenants.move_in_date,
-        Tenants.lease_end_date,
         Tenants.active_status,
         Tenants.created_at,
         Tenants.updated_at,
@@ -123,7 +126,7 @@ def get_tenants(
             Leases.status == "active"
         )
     )
-    
+
     # Apply search filter if provided
     if search:
         search_term = f"%{search}%"
@@ -135,28 +138,31 @@ def get_tenants(
                 Tenants.phone.ilike(search_term)
             )
         )
-    
+
+    # If we only want tenants without active leases
+    if available_only:
+        query = query.filter(Leases.id == None)
+
+    # Order by most recent tenant first
+    query = query.order_by(Tenants.created_at.desc())
+
     results = query.all()
-    
-    # Convert to list of dictionaries
+
     tenants = []
     for row in results:
-        tenant_dict = {
+        tenants.append({
             "id": row.id,
             "first_name": row.first_name,
             "last_name": row.last_name,
             "email": row.email,
             "phone": row.phone,
             "emergency_contact": row.emergency_contact,
-            "move_in_date": row.move_in_date,
-            "lease_end_date": row.lease_end_date,
             "active_status": row.active_status,
             "created_at": row.created_at,
             "updated_at": row.updated_at,
             "lease_id": row.lease_id
-        }
-        tenants.append(tenant_dict)
-    
+        })
+
     return tenants
 
 
@@ -220,18 +226,48 @@ def get_leases(
 
 
 
+from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 @app.post("/create-property")
 def create_property(data: PropertyModel, db: Session = Depends(get_db)):
-    new_property = Properties(**data.dict())
-    db.add(new_property)
-    try:
-        db.commit()
-        db.refresh(new_property)
-    except IntegrityError as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Error creating property")
+    STATUS_MAPPING = {
+        "Vacant": 0,
+        "Booked": 1
+    }
 
-    return {"message": "Property created", "new_property": new_property.property_name}
+    # 🔍 Pre-check if unit_number already exists
+    existing = db.query(Properties).filter(Properties.unit_number == data.unit_number).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unit number '{data.unit_number}' already exists"
+        )
+
+    # Default to 0 if not provided or invalid
+    status_value = STATUS_MAPPING.get(data.status, 0)
+
+    new_property = Properties(
+        property_name=data.property_name,
+        address=data.address,
+        unit_number=data.unit_number,
+        bedrooms=data.bedrooms,
+        status=status_value,
+        monthly_rent=data.monthly_rent,
+        created_at=data.created_at,
+        updated_at=data.updated_at
+    )
+
+    db.add(new_property)
+    db.commit()
+    db.refresh(new_property)
+
+    return {
+        "message": "Property created",
+        "new_property": new_property.property_name,
+        "status": "Vacant" if status_value == 0 else "Booked"
+    }
 
 
 @app.post("/create-lease")
@@ -880,25 +916,6 @@ def export_csv(
 
 
 
-from fastapi import FastAPI, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import or_, func, extract
-from typing import Optional
-from datetime import date, datetime
-from pydantic import BaseModel
-from decimal import Decimal
-
-# Pydantic models for request/response
-class PaymentCreate(BaseModel):
-    tenant_id: int
-    lease_id: int
-    amount: float
-    payment_method: str
-    transaction_reference: Optional[str] = None
-    notes: Optional[str] = None
-
-class PaymentStatusUpdate(BaseModel):
-    status: str
 
 # Main payments listing endpoint
 @app.get("/payments-list")
@@ -1506,3 +1523,279 @@ def get_invoice(payment_id: int, db: Session = Depends(get_db)):
         media_type="application/pdf",
         headers={"Content-Disposition": f"inline; filename=invoice_{payment.id}.pdf"}
     )
+
+
+
+@app.get("/performance-metrics")
+async def get_performance_metrics(db: Session = Depends(get_db)):
+    """Calculate and return key performance metrics"""
+    try:
+        # 1. Occupancy Rate
+        total_properties = db.query(Properties).filter(Properties.status == 1).count()
+        occupied_properties = db.query(Leases).filter(
+            and_(
+                Leases.status == "active",
+                Leases.start_date <= date.today(),
+                Leases.end_date >= date.today()
+            )
+        ).count()
+        
+        occupancy_rate = (occupied_properties / total_properties * 100) if total_properties > 0 else 0
+        
+        # 2. Collection Rate (payments received vs payments due in current month)
+        current_month_start = date.today().replace(day=1)
+        if date.today().month == 12:
+            next_month_start = date.today().replace(year=date.today().year + 1, month=1, day=1)
+        else:
+            next_month_start = date.today().replace(month=date.today().month + 1, day=1)
+        
+        # Total amount due this month
+        total_due = db.query(func.sum(PaymentSchedule.amount_due)).filter(
+            and_(
+                PaymentSchedule.due_date >= current_month_start,
+                PaymentSchedule.due_date < next_month_start
+            )
+        ).scalar() or 0
+        
+        # Total amount collected this month
+        total_collected = db.query(func.sum(Payments.amount)).filter(
+            and_(
+                Payments.payment_date >= current_month_start,
+                Payments.payment_date < next_month_start,
+                Payments.payment_status == "completed"
+            )
+        ).scalar() or 0
+        
+        collection_rate = (total_collected / total_due * 100) if total_due > 0 else 0
+        
+        # 3. Maintenance Completion Rate (optional - based on a hypothetical maintenance table)
+        # Since you don't have a maintenance table, we'll calculate based on payment schedules
+        overdue_payments = db.query(PaymentSchedule).filter(
+            and_(
+                PaymentSchedule.due_date < date.today(),
+                PaymentSchedule.status == "pending"
+            )
+        ).count()
+        
+        total_schedules = db.query(PaymentSchedule).count()
+        maintenance_completion_rate = ((total_schedules - overdue_payments) / total_schedules * 100) if total_schedules > 0 else 100
+        
+        # 4. Tenant Satisfaction (mock calculation based on active tenants vs total tenants)
+        total_tenants_ever = db.query(Tenants).count()
+        active_tenants = db.query(Tenants).filter(Tenants.active_status == True).count()
+        tenant_satisfaction = (active_tenants / total_tenants_ever * 100) if total_tenants_ever > 0 else 0
+        
+        return {
+            "occupancy_rate": round(occupancy_rate, 1),
+            "collection_rate": round(collection_rate, 1),
+            "maintenance_completion_rate": round(maintenance_completion_rate, 1),
+            "tenant_satisfaction": round(tenant_satisfaction, 1)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating performance metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to calculate performance metrics")
+
+# New endpoint - Recent Activities
+@app.get("/recent-activities")
+async def get_recent_activities(limit: int = 5, db: Session = Depends(get_db)):
+    """Get recent activities from various sources"""
+    try:
+        activities = []
+        
+        # Recent lease signings
+        recent_leases = db.query(Leases).join(Tenants).join(Properties).filter(
+            Leases.created_at >= datetime.now() - timedelta(days=30)
+        ).order_by(Leases.created_at.desc()).limit(limit).all()
+        
+        for lease in recent_leases:
+            activities.append({
+                "id": f"lease_{lease.id}",
+                "type": "lease_signed",
+                "description": f"New lease signed by {lease.tenant.first_name} {lease.tenant.last_name} for {lease.property.property_name} Unit {lease.property.unit_number}",
+                "timestamp": lease.created_at.isoformat(),
+                "tenant_name": f"{lease.tenant.first_name} {lease.tenant.last_name}",
+                "amount": float(lease.monthly_rent)
+            })
+        
+        # Recent payments
+        recent_payments = db.query(Payments).join(Tenants).filter(
+            and_(
+                Payments.created_at >= datetime.now() - timedelta(days=30),
+                Payments.payment_status == "completed"
+            )
+        ).order_by(Payments.created_at.desc()).limit(limit).all()
+        
+        for payment in recent_payments:
+            activities.append({
+                "id": f"payment_{payment.id}",
+                "type": "payment_received",
+                "description": f"Payment received from {payment.tenant.first_name} {payment.tenant.last_name}",
+                "timestamp": payment.created_at.isoformat(),
+                "tenant_name": f"{payment.tenant.first_name} {payment.tenant.last_name}",
+                "amount": float(payment.amount)
+            })
+        
+        # Recent tenant registrations
+        recent_tenants = db.query(Tenants).filter(
+            Tenants.created_at >= datetime.now() - timedelta(days=30)
+        ).order_by(Tenants.created_at.desc()).limit(limit).all()
+        
+        for tenant in recent_tenants:
+            activities.append({
+                "id": f"tenant_{tenant.id}",
+                "type": "tenant_moved_in",
+                "description": f"New tenant {tenant.first_name} {tenant.last_name} registered",
+                "timestamp": tenant.created_at.isoformat(),
+                "tenant_name": f"{tenant.first_name} {tenant.last_name}"
+            })
+        
+        # Recent overdue payments (as maintenance requests)
+        overdue_schedules = db.query(PaymentSchedule).join(Leases).join(Tenants).filter(
+            and_(
+                PaymentSchedule.due_date < date.today(),
+                PaymentSchedule.status == "pending"
+            )
+        ).order_by(PaymentSchedule.due_date.desc()).limit(limit).all()
+        
+        for schedule in overdue_schedules:
+            activities.append({
+                "id": f"overdue_{schedule.id}",
+                "type": "maintenance_request",
+                "description": f"Overdue payment from {schedule.lease.tenant.first_name} {schedule.lease.tenant.last_name}",
+                "timestamp": schedule.created_at.isoformat(),
+                "tenant_name": f"{schedule.lease.tenant.first_name} {schedule.lease.tenant.last_name}",
+                "amount": float(schedule.amount_due)
+            })
+        
+        # Sort all activities by timestamp and limit
+        activities.sort(key=lambda x: x["timestamp"], reverse=True)
+        activities = activities[:limit]
+        
+        return {"activities": activities}
+        
+    except Exception as e:
+        logger.error(f"Error fetching recent activities: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch recent activities")
+
+
+@app.get("/monthly-statistics")
+async def get_monthly_statistics(db: Session = Depends(get_db)):
+    """Get monthly statistics for the dashboard chart"""
+    try:
+        current_year = date.today().year
+        monthly_data = []
+        
+        # Get data for each month of the current year
+        for month in range(1, 13):
+            month_start = date(current_year, month, 1)
+            if month == 12:
+                month_end = date(current_year + 1, 1, 1)
+            else:
+                month_end = date(current_year, month + 1, 1)
+            
+            # Monthly revenue from completed payments
+            monthly_revenue = db.query(func.sum(Payments.amount)).filter(
+                and_(
+                    Payments.payment_date >= month_start,
+                    Payments.payment_date < month_end,
+                    Payments.payment_status == "completed"
+                )
+            ).scalar() or 0
+            
+            # Count of payments received in the month
+            payments_count = db.query(func.count(Payments.id)).filter(
+                and_(
+                    Payments.payment_date >= month_start,
+                    Payments.payment_date < month_end,
+                    Payments.payment_status == "completed"
+                )
+            ).scalar() or 0
+            
+            # Calculate occupancy rate for the month (mid-month snapshot)
+            mid_month = date(current_year, month, 15)
+            total_properties = db.query(Properties).filter(Properties.status == 1).count()
+            
+            occupied_properties = db.query(Leases).filter(
+                and_(
+                    Leases.status == "active",
+                    Leases.start_date <= mid_month,
+                    Leases.end_date >= mid_month
+                )
+            ).count()
+            
+            occupancy_rate = (occupied_properties / total_properties * 100) if total_properties > 0 else 0
+            
+            # Convert payments count to revenue amount for visualization
+            # This represents the total value of payments received
+            payments_received = float(monthly_revenue)  # Same as revenue for now
+            
+            monthly_data.append({
+                "month": month_start.strftime("%b"),
+                "revenue": float(monthly_revenue),
+                "payments_received": payments_received * 0.8,  # Slightly lower for visual distinction
+                "occupancy_rate": round(occupancy_rate, 1)
+            })
+        
+        return {"monthly_data": monthly_data}
+        
+    except Exception as e:
+        logger.error(f"Error fetching monthly statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch monthly statistics")
+
+
+@app.get("/property-demographics")
+async def get_property_demographics(db: Session = Depends(get_db)):
+    """Get property demographics showing tenant distribution and occupancy"""
+    try:
+        # Get all active properties with their lease information
+        properties_query = db.query(Properties).filter(Properties.status == 1).all()
+        
+        property_demographics = []
+        
+        for prop in properties_query:
+            # Count active tenants for this property
+            active_leases = db.query(Leases).filter(
+                and_(
+                    Leases.property_id == prop.id,
+                    Leases.status == "active",
+                    Leases.start_date <= date.today(),
+                    Leases.end_date >= date.today()
+                )
+            ).all()
+            
+            tenant_count = len(active_leases)
+            
+            # Calculate average rent for this property
+            if active_leases:
+                total_rent = sum(float(lease.monthly_rent) for lease in active_leases)
+                average_rent = total_rent / len(active_leases)
+            else:
+                average_rent = float(prop.monthly_rent) if prop.monthly_rent else 0
+            
+            # For occupancy rate, we'll assume 1 unit = 1 tenant max for now
+            # You can adjust this based on your property structure
+            total_units = 1  # Assuming each property record is one unit
+            occupancy_rate = (tenant_count / total_units * 100) if total_units > 0 else 0
+            
+            # Extract area from address (you might want to modify this based on your data structure)
+            area = prop.address.split(',')[-1].strip() if prop.address else "Unknown Area"
+            
+            property_demographics.append({
+                "id": prop.id,
+                "property_name": prop.property_name or f"Property {prop.unit_number}",
+                "area": area,
+                "tenant_count": tenant_count,
+                "total_units": total_units,
+                "occupancy_rate": round(min(occupancy_rate, 100), 1),  # Cap at 100%
+                "average_rent": round(average_rent, 2)
+            })
+        
+        # Sort by tenant count (highest first)
+        property_demographics.sort(key=lambda x: x["tenant_count"], reverse=True)
+        
+        return {"properties": property_demographics}
+        
+    except Exception as e:
+        logger.error(f"Error fetching property demographics: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch property demographics")

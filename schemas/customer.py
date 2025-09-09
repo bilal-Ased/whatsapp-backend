@@ -22,8 +22,6 @@ class TenantModel(BaseModel):
     phone: Optional[str] = None
     emergency_contact: Optional[str] = None
     lease_id: Optional[str] = None
-    move_in_date: date
-    lease_end_date: Optional[date] = None
     active_status: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -37,6 +35,7 @@ class PropertyModel(BaseModel):
     status: str
     unit_number: str
     bedrooms : int 
+    status: Optional[str] = "Vacant"
     monthly_rent: Decimal
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

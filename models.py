@@ -30,14 +30,11 @@ class Tenants(Base):
     __tablename__ = "tenants"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-
     first_name = Column(String(50), nullable=False)
     last_name = Column(String(50), nullable=False)
     email = Column(String(100), unique=True)
     phone = Column(String(20))
     emergency_contact = Column(String(100))
-    move_in_date = Column(Date, nullable=False)
-    lease_end_date = Column(Date)
     active_status = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -57,7 +54,7 @@ class Properties(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     property_name = Column(String(255))
     address = Column(String(255), nullable=False)
-    unit_number = Column(String(20))
+    unit_number = Column(String(20), unique=True, nullable=False) 
     bedrooms = Column(Integer)
     status = Column(Integer, default=1)
     monthly_rent = Column(Numeric(10, 2), nullable=False)
