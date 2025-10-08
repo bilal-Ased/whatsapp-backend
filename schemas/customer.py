@@ -83,8 +83,8 @@ class LeaseOut(LeaseBase):
 
 
 class LeaseWithDetails(BaseModel):
-    id: str
-    tenant_id: str
+    id: int  # Changed from str to int
+    tenant_id: int  # Changed from str to int
     tenant_name: str
     tenant_phone: str
     tenant_email: Optional[str] = None
@@ -95,11 +95,9 @@ class LeaseWithDetails(BaseModel):
     deposit: Decimal
     lease_document: Optional[str] = None
     status: str
-  
 
     class Config:
-        extra = "ignore"
-        
+        extra = "ignore"        
         
 class EmailAttachmentBase(BaseModel):
     id: str
