@@ -29,12 +29,12 @@ class TenantModel(BaseModel):
     class Config:
         orm_mode = True
 class PropertyModel(BaseModel):
-    id: Optional[str] = None
+    id: Optional[int] = None  # Changed from str to int
     property_name: str
     address: str
     status: str
     unit_number: str
-    bedrooms : int 
+    bedrooms: int 
     status: Optional[str] = "Vacant"
     monthly_rent: Decimal
     created_at: Optional[datetime] = None
