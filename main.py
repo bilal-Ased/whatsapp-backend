@@ -524,20 +524,30 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 
 @app.post("/login")
 def login_user(user: UserLogin, db: Session = Depends(get_db)):
-    # Check if user exists
-    db_user = db.query(User).filter(User.email == user.email).first()
-    
-    if not db_user or not verify_password(user.password, db_user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    access_token = create_access_token(data={"sub": db_user.email})
-    
-    return {
-        "message": "Login successful!",
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
-
+    try:
+        # Check if user exists
+        db_user = db.query(User).filter(User.email == user.email).first()
+        
+        if not db_user:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+            
+        if not verify_password(user.password, db_user.hashed_password):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        access_token = create_access_token(data={"sub": db_user.email})
+        
+        return {
+            "message": "Login successful!",
+            "access_token": access_token,
+            "token_type": "bearer"
+        }
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
 
