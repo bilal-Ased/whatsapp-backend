@@ -45,8 +45,12 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
-    allow_credentials=False,  # Must be False when using "*"
+    allow_origins=[
+        "http://localhost:5173",
+        "https://silverfox-admin.vercel.app",
+        "https://silver-fox-mgt.web.app",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
