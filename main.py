@@ -516,6 +516,7 @@ def get_password_hash(password: str) -> str:
     # Truncate to 72 bytes (not characters) for bcrypt
     password_bytes = password.encode('utf-8')[:72]
     password = password_bytes.decode('utf-8', errors='ignore')
+    print(f"[HASH] Password length: {len(password)} chars, {len(password.encode('utf-8'))} bytes")
     return pwd_context.hash(password)
 
 
@@ -523,6 +524,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     # Truncate to 72 bytes (not characters) for bcrypt
     password_bytes = plain_password.encode('utf-8')[:72]
     plain_password = password_bytes.decode('utf-8', errors='ignore')
+    print(f"[VERIFY] Password length: {len(plain_password)} chars, {len(plain_password.encode('utf-8'))} bytes")
     return pwd_context.verify(plain_password, hashed_password)
 
 
@@ -537,12 +539,17 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 @app.post("/login")
 def login_user(user: UserLogin, db: Session = Depends(get_db)):
     try:
+        print(f"[LOGIN] Attempting login for email: {user.email}")
+        print(f"[LOGIN] Password length received: {len(user.password)} chars, {len(user.password.encode('utf-8'))} bytes")
+        
         # Check if user exists
         db_user = db.query(User).filter(User.email == user.email).first()
         
         if not db_user:
             raise HTTPException(status_code=401, detail="Invalid email or password")
-            
+        
+        print(f"[LOGIN] User found in database")
+        
         if not verify_password(user.password, db_user.hashed_password):
             raise HTTPException(status_code=401, detail="Invalid email or password")
         
@@ -563,6 +570,7 @@ def login_user(user: UserLogin, db: Session = Depends(get_db)):
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
 
 @app.get("/me")
 def read_users_me(current_user: User = Depends(get_current_user)):
