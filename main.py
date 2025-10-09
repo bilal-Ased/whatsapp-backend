@@ -47,14 +47,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://silverfox-admin.vercel.app",
         "https://silver-fox-mgt.web.app",
+        "https://silver-fox-mgt.web.app/signin",  # Add this if needed
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Dependency to get DB session
 def get_db():
     db = SessionLocal()
