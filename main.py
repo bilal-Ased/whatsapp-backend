@@ -513,15 +513,18 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def get_password_hash(password: str) -> str:
-    # Truncate to 72 bytes as safety measure for bcrypt
-    password = password[:72]
+    # Truncate to 72 bytes (not characters) for bcrypt
+    password_bytes = password.encode('utf-8')[:72]
+    password = password_bytes.decode('utf-8', errors='ignore')
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    # Truncate to 72 bytes as safety measure for bcrypt
-    plain_password = plain_password[:72]
+    # Truncate to 72 bytes (not characters) for bcrypt
+    password_bytes = plain_password.encode('utf-8')[:72]
+    plain_password = password_bytes.decode('utf-8', errors='ignore')
     return pwd_context.verify(plain_password, hashed_password)
+
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
@@ -529,6 +532,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
 
 @app.post("/login")
 def login_user(user: UserLogin, db: Session = Depends(get_db)):
@@ -555,12 +559,10 @@ def login_user(user: UserLogin, db: Session = Depends(get_db)):
         print(f"Login error: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-
 
 @app.get("/me")
 def read_users_me(current_user: User = Depends(get_current_user)):
