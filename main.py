@@ -45,7 +45,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",  # your React dev server
+        "https://localhost:5173",
+        "https://silverfox-admin.vercel.app",  # add your production frontend domain if applicable
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
