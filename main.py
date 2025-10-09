@@ -73,6 +73,11 @@ logger = logging.getLogger(__name__)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
+
+@app.get("/test-cors")
+async def test_cors():
+    return {"message": "CORS is working"}
+
 @app.post("/create-tenant")
 def create_tenant(data: TenantModel, db: Session = Depends(get_db)):
     # Exclude auto-generated fields (id, created_at, updated_at are handled by DB)
