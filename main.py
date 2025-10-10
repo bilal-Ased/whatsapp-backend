@@ -76,9 +76,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 
-@app.get("/test-cors")
-async def test_cors():
-    return {"message": "CORS is working"}
+
 
 @app.post("/create-tenant")
 def create_tenant(data: TenantModel, db: Session = Depends(get_db)):
@@ -418,26 +416,30 @@ def get_properties(
 
 @app.get("/total-count")
 def get_total_count(
-    type: str = Query(..., description="Type can be 'tenants', 'properties', 'users', or 'leases'"),
+    type: str = Query(...),
     db: Session = Depends(get_db)
 ):
-    model_map = {
-        "properties": Properties,
-        "tenants": Tenants,
-        "users": User,
-        "leases": Leases,
-        "payments": Payments
+    table_map = {
+        "properties": Properties.__tablename__,
+        "tenants": Tenants.__tablename__,
+        "users": User.__tablename__,
+        "leases": Leases.__tablename__,
+        "payments": Payments.__tablename__
     }
 
-    model = model_map.get(type)
-    if not model:
+    table_name = table_map.get(type)
+    if not table_name:
         raise HTTPException(status_code=400, detail="Invalid type.")
 
-    # Use SQLAlchemy Core for efficiency
-    stmt = select(func.count()).select_from(model.__table__)
-    count = db.execute(stmt).scalar()
+    stmt = text("""
+        SELECT reltuples::BIGINT AS estimate
+        FROM pg_class
+        WHERE relname = :table_name
+    """)
 
-    return {"type": type, "total_count": count}
+    result = db.execute(stmt, {"table_name": table_name}).scalar()
+
+    return {"type": type, "total_count": int(result or 0), "estimated": True}
 
 
 
