@@ -415,7 +415,10 @@ def get_properties(
 
 
 @app.get("/total-count")
-def get_total_count(type: str = Query(..., description="Type can be 'tenants' or 'properties'"), db: Session = Depends(get_db)):
+def get_total_count(
+    type: str = Query(..., description="Type can be 'tenants', 'properties', 'users', or 'leases'"),
+    db: Session = Depends(get_db)
+):
     if type == "properties":
         count = db.query(Properties).count()
     elif type == "tenants":
@@ -424,11 +427,16 @@ def get_total_count(type: str = Query(..., description="Type can be 'tenants' or
         count = db.query(User).count()
     elif type == "leases":
         count = db.query(Leases).count()
-        
+    elif type == "payments":
+        count = db.query(Payments).count()
     else:
-        raise HTTPException(status_code=400, detail="Invalid type. Use 'tenants' or 'properties'.")
-    
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid type. Use 'tenants', 'properties', 'users', or 'leases'."
+        )
+
     return {"type": type, "total_count": count}
+
 
 
 
