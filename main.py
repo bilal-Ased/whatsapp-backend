@@ -416,30 +416,26 @@ def get_properties(
 
 @app.get("/total-count")
 def get_total_count(
-    type: str = Query(...),
+    type: str = Query(..., description="Type can be 'tenants', 'properties', 'users', or 'leases'"),
     db: Session = Depends(get_db)
 ):
-    table_map = {
-        "properties": Properties.__tablename__,
-        "tenants": Tenants.__tablename__,
-        "users": User.__tablename__,
-        "leases": Leases.__tablename__,
-        "payments": Payments.__tablename__
+    model_map = {
+        "properties": Properties,
+        "tenants": Tenants,
+        "users": User,
+        "leases": Leases,
+        "payments": Payments
     }
 
-    table_name = table_map.get(type)
-    if not table_name:
+    model = model_map.get(type)
+    if not model:
         raise HTTPException(status_code=400, detail="Invalid type.")
 
-    stmt = text("""
-        SELECT reltuples::BIGINT AS estimate
-        FROM pg_class
-        WHERE relname = :table_name
-    """)
+    # Use SQLAlchemy Core for efficiency
+    stmt = select(func.count()).select_from(model.__table__)
+    count = db.execute(stmt).scalar()
 
-    result = db.execute(stmt, {"table_name": table_name}).scalar()
-
-    return {"type": type, "total_count": int(result or 0), "estimated": True}
+    return {"type": type, "total_count": count}
 
 
 
