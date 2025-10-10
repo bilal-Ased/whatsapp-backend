@@ -39,6 +39,7 @@ from fastapi.responses import StreamingResponse
 from generate_invoice.invoice import generate_invoice
 import logging
 from sqlalchemy import or_, cast, String
+from sqlalchemy import func, select
 
 
 app = FastAPI()
@@ -420,21 +421,21 @@ def get_total_count(
     type: str = Query(..., description="Type can be 'tenants', 'properties', 'users', or 'leases'"),
     db: Session = Depends(get_db)
 ):
-    if type == "properties":
-        count = db.query(Properties).count()
-    elif type == "tenants":
-        count = db.query(Tenants).count()
-    elif type == "users":
-        count = db.query(User).count()
-    elif type == "leases":
-        count = db.query(Leases).count()
-    elif type == "payments":
-        count = db.query(Payments).count()
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid type. Use 'tenants', 'properties', 'users', or 'leases'."
-        )
+    model_map = {
+        "properties": Properties,
+        "tenants": Tenants,
+        "users": User,
+        "leases": Leases,
+        "payments": Payments
+    }
+
+    model = model_map.get(type)
+    if not model:
+        raise HTTPException(status_code=400, detail="Invalid type.")
+
+    # Use SQLAlchemy Core for efficiency
+    stmt = select(func.count()).select_from(model.__table__)
+    count = db.execute(stmt).scalar()
 
     return {"type": type, "total_count": count}
 
