@@ -38,6 +38,7 @@ from sqlalchemy import or_, and_
 from fastapi.responses import StreamingResponse
 from generate_invoice.invoice import generate_invoice
 import logging
+from sqlalchemy import or_, cast, String
 
 
 app = FastAPI()
@@ -639,13 +640,13 @@ def global_search(
 ) -> Dict[str, List[Dict[str, Any]]]:
     search_term = f"%{search}%"
 
-    # Tenants search
+    # --- Tenants search ---
     tenants_query = db.query(Tenants).filter(
         or_(
-            Tenants.first_name.ilike(search_term),
-            Tenants.last_name.ilike(search_term),
-            Tenants.email.ilike(search_term),
-            Tenants.phone.ilike(search_term),
+            cast(Tenants.first_name, String).ilike(search_term),
+            cast(Tenants.last_name, String).ilike(search_term),
+            cast(Tenants.email, String).ilike(search_term),
+            cast(Tenants.phone, String).ilike(search_term),
         )
     )
     tenants = [
@@ -658,12 +659,12 @@ def global_search(
         } for t in tenants_query.all()
     ]
 
-    # Properties search
+    # --- Properties search ---
     properties_query = db.query(Properties).filter(
         or_(
-            Properties.property_name.ilike(search_term),
-            Properties.address.ilike(search_term),
-            Properties.unit_number.ilike(search_term),
+            cast(Properties.property_name, String).ilike(search_term),
+            cast(Properties.address, String).ilike(search_term),
+            cast(Properties.unit_number, String).ilike(search_term),
         )
     )
     properties = [
@@ -676,11 +677,11 @@ def global_search(
         } for p in properties_query.all()
     ]
 
-    # Leases search
+    # --- Leases search (fixed with casting) ---
     leases_query = db.query(Leases).filter(
         or_(
-            Leases.status.ilike(search_term),
-            Leases.lease_document.ilike(search_term)
+            cast(Leases.status, String).ilike(search_term),
+            cast(Leases.lease_document, String).ilike(search_term),
         )
     )
     leases = [
@@ -689,7 +690,8 @@ def global_search(
             "id": l.id,
             "tenant_id": l.tenant_id,
             "property_id": l.property_id,
-            "status": l.status,
+            "status": str(l.status),
+            "lease_document": str(l.lease_document),
         } for l in leases_query.all()
     ]
 
@@ -698,7 +700,6 @@ def global_search(
         "properties": properties,
         "leases": leases,
     }
-
 
 # get tenant info 
 
