@@ -6,7 +6,7 @@ from models import Tenants,Properties,User,Leases,Email,EmailAttachment,EmailPar
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import joinedload
 from fastapi.middleware.cors import CORSMiddleware
-from schemas.customer import TenantModel,PropertyModel,UserCreate,UserLogin,LeaseBase,LeaseWithDetails,EmailRead,PaymentCreate,PaymentStatusUpdate
+from schemas.customer import TenantModel,PropertyModel,UserCreate,UserLogin,LeaseBase,LeaseWithDetails,EmailRead,PaymentCreate,UserRead
 from sqlalchemy.exc import IntegrityError
 from typing import Optional,List
 from sqlalchemy import func, and_, or_
@@ -701,7 +701,7 @@ def read_users_me(current_user: User = Depends(get_current_user)):
         "phone": current_user.phone,
     }
 
-@app.get("/users-list", response_model=List[UserCreate])
+@app.get("/users-list", response_model=List[UserRead])
 def get_users(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None, description="Search by name or Email")

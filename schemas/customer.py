@@ -59,6 +59,18 @@ class UserCreate(BaseModel):
         orm_mode = True
         
         
+        
+class UserRead(BaseModel):
+    id: int
+    username: str
+    email: str
+    phone: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
 class UserLogin(BaseModel):
     email: str
     password: str
