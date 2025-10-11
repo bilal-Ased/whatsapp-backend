@@ -21,13 +21,16 @@ class TenantModel(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     emergency_contact: Optional[str] = None
-    lease_id: Optional[str] = None
+    lease_id: Optional[int] = None
+    move_in_date: Optional[date] = None
+    lease_end_date: Optional[date] = None
     active_status: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
     class Config:
         orm_mode = True
+
 class PropertyModel(BaseModel):
     id: Optional[int] = None  # Changed from str to int
     property_name: str

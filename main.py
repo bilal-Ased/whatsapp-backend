@@ -126,7 +126,9 @@ def get_tenants(
         Tenants.active_status,
         Tenants.created_at,
         Tenants.updated_at,
-        Leases.id.label('lease_id')
+        Leases.id.label('lease_id'),
+        Leases.start_date.label('move_in_date'),
+        Leases.end_date.label('lease_end_date')
     ).outerjoin(
         Leases, 
         and_(
@@ -147,11 +149,11 @@ def get_tenants(
             )
         )
 
-    # If we only want tenants without active leases
+    # Filter only tenants without active lease
     if available_only:
         query = query.filter(Leases.id == None)
 
-    # Order by most recent tenant first
+    # Order by most recent tenant
     query = query.order_by(Tenants.created_at.desc())
 
     results = query.all()
@@ -168,7 +170,9 @@ def get_tenants(
             "active_status": row.active_status,
             "created_at": row.created_at,
             "updated_at": row.updated_at,
-            "lease_id": row.lease_id
+            "lease_id": row.lease_id,
+            "move_in_date": row.move_in_date,
+            "lease_end_date": row.lease_end_date
         })
 
     return tenants
@@ -234,10 +238,6 @@ def get_leases(
 
 
 
-from fastapi import HTTPException
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
 @app.post("/create-property")
 def create_property(data: PropertyModel, db: Session = Depends(get_db)):
     STATUS_MAPPING = {
@@ -277,6 +277,61 @@ def create_property(data: PropertyModel, db: Session = Depends(get_db)):
         "status": "Vacant" if status_value == 0 else "Booked"
     }
 
+
+
+@app.put("/update-property/{property_id}")
+def update_property(property_id: int, data: PropertyModel, db: Session = Depends(get_db)):
+    STATUS_MAPPING = {
+        "Vacant": 0,
+        "Booked": 1
+    }
+
+    # 🔍 Check if property exists
+    existing_property = db.query(Properties).filter(Properties.id == property_id).first()
+    if not existing_property:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Property with ID {property_id} not found"
+        )
+
+    # 🔍 Check if unit_number is being changed and if it already exists (excluding current property)
+    if data.unit_number != existing_property.unit_number:
+        duplicate_unit = db.query(Properties).filter(
+            Properties.unit_number == data.unit_number,
+            Properties.id != property_id
+        ).first()
+        if duplicate_unit:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unit number '{data.unit_number}' already exists"
+            )
+
+    # Map status to integer value, default to current status if not provided or invalid
+    status_value = STATUS_MAPPING.get(data.status, existing_property.status)
+
+    # Update property fields
+    existing_property.property_name = data.property_name
+    existing_property.address = data.address
+    existing_property.unit_number = data.unit_number
+    existing_property.bedrooms = data.bedrooms
+    existing_property.status = status_value
+    existing_property.monthly_rent = data.monthly_rent
+    existing_property.updated_at = datetime.utcnow()  # Auto-update timestamp
+
+    db.commit()
+    db.refresh(existing_property)
+
+    return {
+        "message": "Property updated successfully",
+        "id": existing_property.id,
+        "property_name": existing_property.property_name,
+        "address": existing_property.address,
+        "unit_number": existing_property.unit_number,
+        "bedrooms": existing_property.bedrooms,
+        "monthly_rent": str(existing_property.monthly_rent),
+        "status": "Vacant" if status_value == 0 else "Booked",
+        "updated_at": existing_property.updated_at.isoformat() if existing_property.updated_at else None
+    }
 
 @app.post("/create-lease")
 def create_lease(
@@ -1790,56 +1845,61 @@ async def get_monthly_statistics(db: Session = Depends(get_db)):
 
 @app.get("/property-demographics")
 async def get_property_demographics(db: Session = Depends(get_db)):
-    """Get property demographics showing tenant distribution and occupancy"""
+    """Optimized property demographics query"""
     try:
-        # Get all active properties with their lease information
-        properties_query = db.query(Properties).filter(Properties.status == 1).all()
-        
-        property_demographics = []
-        
-        for prop in properties_query:
-            # Count active tenants for this property
-            active_leases = db.query(Leases).filter(
+        today = date.today()
+
+        # Get aggregated data for all active properties
+        lease_stats = (
+            db.query(
+                Leases.property_id,
+                func.count(Leases.id).label("tenant_count"),
+                func.avg(Leases.monthly_rent).label("average_rent")
+            )
+            .filter(
                 and_(
-                    Leases.property_id == prop.id,
                     Leases.status == "active",
-                    Leases.start_date <= date.today(),
-                    Leases.end_date >= date.today()
+                    Leases.start_date <= today,
+                    Leases.end_date >= today
                 )
-            ).all()
-            
-            tenant_count = len(active_leases)
-            
-            # Calculate average rent for this property
-            if active_leases:
-                total_rent = sum(float(lease.monthly_rent) for lease in active_leases)
-                average_rent = total_rent / len(active_leases)
-            else:
-                average_rent = float(prop.monthly_rent) if prop.monthly_rent else 0
-            
-            # For occupancy rate, we'll assume 1 unit = 1 tenant max for now
-            # You can adjust this based on your property structure
-            total_units = 1  # Assuming each property record is one unit
+            )
+            .group_by(Leases.property_id)
+            .all()
+        )
+
+        # Convert lease stats to a lookup dict
+        lease_data = {row.property_id: row for row in lease_stats}
+
+        # Fetch all active properties in one go
+        properties = db.query(Properties).filter(Properties.status == 1).all()
+
+        property_demographics = []
+
+        for prop in properties:
+            lease_info = lease_data.get(prop.id)
+            tenant_count = lease_info.tenant_count if lease_info else 0
+            average_rent = float(lease_info.average_rent or 0) if lease_info else float(prop.monthly_rent or 0)
+
+            total_units = 1  # can change if you have unit count per property
             occupancy_rate = (tenant_count / total_units * 100) if total_units > 0 else 0
-            
-            # Extract area from address (you might want to modify this based on your data structure)
+
             area = prop.address.split(',')[-1].strip() if prop.address else "Unknown Area"
-            
+
             property_demographics.append({
                 "id": prop.id,
                 "property_name": prop.property_name or f"Property {prop.unit_number}",
                 "area": area,
                 "tenant_count": tenant_count,
                 "total_units": total_units,
-                "occupancy_rate": round(min(occupancy_rate, 100), 1),  # Cap at 100%
+                "occupancy_rate": round(min(occupancy_rate, 100), 1),
                 "average_rent": round(average_rent, 2)
             })
-        
+
         # Sort by tenant count (highest first)
         property_demographics.sort(key=lambda x: x["tenant_count"], reverse=True)
-        
+
         return {"properties": property_demographics}
-        
+
     except Exception as e:
         logger.error(f"Error fetching property demographics: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch property demographics")
