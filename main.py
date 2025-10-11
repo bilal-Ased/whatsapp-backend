@@ -44,6 +44,7 @@ from sqlalchemy import func, select
 
 app = FastAPI()
 
+VERIFY_TOKEN = "123456" 
 
 app.add_middleware(
     CORSMiddleware,
@@ -1902,11 +1903,11 @@ async def get_monthly_statistics(db: Session = Depends(get_db)):
 
 @app.get("/property-demographics")
 async def get_property_demographics(db: Session = Depends(get_db)):
-    """Optimized property demographics query"""
+    """Get property demographics showing tenant distribution and occupancy."""
     try:
         today = date.today()
 
-        # Get aggregated data for all active properties
+        # 1️⃣ Aggregate lease data (active leases only)
         lease_stats = (
             db.query(
                 Leases.property_id,
@@ -1915,7 +1916,7 @@ async def get_property_demographics(db: Session = Depends(get_db)):
             )
             .filter(
                 and_(
-                    Leases.status == "active",
+                    Leases.status == "active",      # Enum-safe filter
                     Leases.start_date <= today,
                     Leases.end_date >= today
                 )
@@ -1924,27 +1925,30 @@ async def get_property_demographics(db: Session = Depends(get_db)):
             .all()
         )
 
-        # Convert lease stats to a lookup dict
+        # Convert to lookup dict: {property_id: row}
         lease_data = {row.property_id: row for row in lease_stats}
 
-        # Fetch all active properties in one go
+        # 2️⃣ Fetch all active properties (status = 1)
         properties = db.query(Properties).filter(Properties.status == 1).all()
 
         property_demographics = []
 
+        # 3️⃣ Combine property + lease data
         for prop in properties:
             lease_info = lease_data.get(prop.id)
             tenant_count = lease_info.tenant_count if lease_info else 0
-            average_rent = float(lease_info.average_rent or 0) if lease_info else float(prop.monthly_rent or 0)
+            average_rent = float(lease_info.average_rent or 0)
 
-            total_units = 1  # can change if you have unit count per property
+            # If your property model has unit_count, use it; otherwise default to 1
+            total_units = getattr(prop, "unit_count", 1)
             occupancy_rate = (tenant_count / total_units * 100) if total_units > 0 else 0
 
-            area = prop.address.split(',')[-1].strip() if prop.address else "Unknown Area"
+            # Extract area from address (last comma-separated value)
+            area = prop.address.split(",")[-1].strip() if prop.address else "Unknown Area"
 
             property_demographics.append({
                 "id": prop.id,
-                "property_name": prop.property_name or f"Property {prop.unit_number}",
+                "property_name": prop.property_name or f"Property {getattr(prop, 'unit_number', '')}",
                 "area": area,
                 "tenant_count": tenant_count,
                 "total_units": total_units,
@@ -1952,11 +1956,39 @@ async def get_property_demographics(db: Session = Depends(get_db)):
                 "average_rent": round(average_rent, 2)
             })
 
-        # Sort by tenant count (highest first)
+        # 4️⃣ Sort by most tenants (descending)
         property_demographics.sort(key=lambda x: x["tenant_count"], reverse=True)
 
         return {"properties": property_demographics}
 
     except Exception as e:
-        logger.error(f"Error fetching property demographics: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to fetch property demographics")
+        logger.exception("Error fetching property demographics")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch property demographics: {str(e)}"
+        )
+
+
+
+
+@app.get("/webhooks")
+async def verify_webhook(request: Request):
+    params = dict(request.query_params)
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        return JSONResponse(content=int(challenge))
+    else:
+        return JSONResponse(content={"error": "Verification failed"}, status_code=403)
+
+
+@app.post("/webhooks")
+async def receive_webhook(request: Request):
+    data = await request.json()
+    print("📩 Webhook received:")
+    print(data)  # You can process this data as needed
+
+    # Always return 200 OK so Meta knows you received it
+    return JSONResponse(content={"status": "received"}, status_code=200)
