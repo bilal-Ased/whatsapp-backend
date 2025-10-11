@@ -191,3 +191,45 @@ class EmailAttachment(Base):
 
     def __repr__(self):
         return f"<EmailAttachment(filename='{self.filename}', size={self.size})>"
+
+
+
+class WhatsAppContact(Base):
+    __tablename__ = "whatsapp_contacts"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    wa_id = Column(String(50), unique=True, nullable=False, index=True)  # WhatsApp ID (phone number)
+    profile_name = Column(String(100))
+    phone_number = Column(String(20))
+    is_blocked = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    messages = relationship("WhatsAppMessage", back_populates="contact")
+    
+    def __repr__(self):
+        return f"<WhatsAppContact(wa_id={self.wa_id}, name={self.profile_name})>"
+
+
+class WhatsAppMessage(Base):
+    __tablename__ = "whatsapp_messages"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    message_id = Column(String(200), unique=True, nullable=False, index=True)  # WhatsApp message ID
+    contact_id = Column(Integer, ForeignKey("whatsapp_contacts.id"), nullable=False)
+    from_number = Column(String(50), nullable=False)
+    to_number = Column(String(50))  # Your business number
+    message_type = Column(String(20), nullable=False)  # text, image, video, document, etc.
+    message_body = Column(Text)
+    media_url = Column(String(500))
+    media_mime_type = Column(String(100))
+    timestamp = Column(DateTime(timezone=True), nullable=False)
+    is_read = Column(Boolean, default=False)
+    direction = Column(String(10), default="inbound")  # inbound or outbound
+    status = Column(String(20), default="received")  # received, sent, delivered, read, failed
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    contact = relationship("WhatsAppContact", back_populates="messages")
+    
+    def __repr__(self):
+        return f"<WhatsAppMessage(id={self.id}, from={self.from_number}, type={self.message_type})>"

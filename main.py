@@ -6,7 +6,7 @@ from models import Tenants,Properties,User,Leases,Email,EmailAttachment,EmailPar
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import joinedload
 from fastapi.middleware.cors import CORSMiddleware
-from schemas.customer import TenantModel,PropertyModel,UserCreate,UserLogin,LeaseBase,LeaseWithDetails,EmailRead,PaymentCreate,UserRead
+from schemas.customer import TenantModel,PropertyModel,UserCreate,UserLogin,LeaseBase,LeaseWithDetails,EmailRead,PaymentCreate,UserRead,WhatsAppContact,WhatsAppMessage,WhatsAppMessageRead,WhatsAppContactRead
 from sqlalchemy.exc import IntegrityError
 from typing import Optional,List
 from sqlalchemy import func, and_, or_
@@ -1984,11 +1984,189 @@ async def verify_webhook(request: Request):
         return JSONResponse(content={"error": "Verification failed"}, status_code=403)
 
 
-@app.post("/webhooks")
-async def receive_webhook(request: Request):
-    data = await request.json()
-    print("📩 Webhook received:")
-    print(data)  # You can process this data as needed
 
-    # Always return 200 OK so Meta knows you received it
-    return JSONResponse(content={"status": "received"}, status_code=200)
+@app.post("/webhooks")
+async def receive_webhook(request: Request, db: Session = Depends(get_db)):
+    """Handle incoming WhatsApp webhook messages"""
+    try:
+        body = await request.json()
+        print("📩 Webhook received:")
+        print(body)
+        
+        # Parse WhatsApp message
+        if body.get("object") == "whatsapp_business_account":
+            for entry in body.get("entry", []):
+                for change in entry.get("changes", []):
+                    value = change.get("value", {})
+                    
+                    # Get message metadata
+                    metadata = value.get("metadata", {})
+                    to_number = metadata.get("display_phone_number")
+                    
+                    # Get contact info
+                    contacts = value.get("contacts", [])
+                    if contacts:
+                        contact_info = contacts[0]
+                        wa_id = contact_info.get("wa_id")
+                        profile_name = contact_info.get("profile", {}).get("name")
+                        
+                        # Create or update contact
+                        contact = db.query(WhatsAppContact).filter(
+                            WhatsAppContact.wa_id == wa_id
+                        ).first()
+                        
+                        if not contact:
+                            contact = WhatsAppContact(
+                                wa_id=wa_id,
+                                profile_name=profile_name,
+                                phone_number=wa_id
+                            )
+                            db.add(contact)
+                            db.commit()
+                            db.refresh(contact)
+                        elif profile_name and contact.profile_name != profile_name:
+                            contact.profile_name = profile_name
+                            db.commit()
+                    
+                    # Get messages
+                    messages = value.get("messages", [])
+                    for msg in messages:
+                        message_id = msg.get("id")
+                        from_number = msg.get("from")
+                        timestamp = datetime.fromtimestamp(int(msg.get("timestamp")))
+                        message_type = msg.get("type")
+                        
+                        # Check if message already exists
+                        existing_msg = db.query(WhatsAppMessage).filter(
+                            WhatsAppMessage.message_id == message_id
+                        ).first()
+                        
+                        if not existing_msg:
+                            message_body = None
+                            media_url = None
+                            media_mime_type = None
+                            
+                            # Extract message content based on type
+                            if message_type == "text":
+                                message_body = msg.get("text", {}).get("body")
+                            elif message_type == "image":
+                                image_data = msg.get("image", {})
+                                media_url = image_data.get("id")
+                                media_mime_type = image_data.get("mime_type")
+                                message_body = image_data.get("caption")
+                            elif message_type == "video":
+                                video_data = msg.get("video", {})
+                                media_url = video_data.get("id")
+                                media_mime_type = video_data.get("mime_type")
+                                message_body = video_data.get("caption")
+                            elif message_type == "document":
+                                doc_data = msg.get("document", {})
+                                media_url = doc_data.get("id")
+                                media_mime_type = doc_data.get("mime_type")
+                                message_body = doc_data.get("filename")
+                            elif message_type == "audio":
+                                audio_data = msg.get("audio", {})
+                                media_url = audio_data.get("id")
+                                media_mime_type = audio_data.get("mime_type")
+                            
+                            # Create message
+                            new_message = WhatsAppMessage(
+                                message_id=message_id,
+                                contact_id=contact.id,
+                                from_number=from_number,
+                                to_number=to_number,
+                                message_type=message_type,
+                                message_body=message_body,
+                                media_url=media_url,
+                                media_mime_type=media_mime_type,
+                                timestamp=timestamp,
+                                direction="inbound",
+                                status="received"
+                            )
+                            db.add(new_message)
+                            db.commit()
+        
+        # Always return 200 OK so Meta knows you received it
+        return JSONResponse(content={"status": "received"}, status_code=200)
+        
+    except Exception as e:
+        print(f"❌ Error processing webhook: {str(e)}")
+        # Still return 200 so Meta doesn't retry
+        return JSONResponse(content={"status": "received"}, status_code=200)
+
+
+@app.get("/contacts", response_model=List[WhatsAppContactRead])
+async def get_contacts(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db)
+):
+    """Get all WhatsApp contacts"""
+    contacts = db.query(WhatsAppContact).offset(skip).limit(limit).all()
+    return contacts
+
+
+@app.get("/contacts/{wa_id}", response_model=WhatsAppContactRead)
+async def get_contact(wa_id: str, db: Session = Depends(get_db)):
+    """Get a specific contact by WhatsApp ID"""
+    contact = db.query(WhatsAppContact).filter(
+        WhatsAppContact.wa_id == wa_id
+    ).first()
+    
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    
+    return contact
+
+
+@app.get("/messages", response_model=List[WhatsAppMessageRead])
+async def get_messages(
+    skip: int = 0, 
+    limit: int = 100,
+    contact_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """Get all messages, optionally filtered by contact"""
+    query = db.query(WhatsAppMessage)
+    
+    if contact_id:
+        query = query.filter(WhatsAppMessage.contact_id == contact_id)
+    
+    messages = query.order_by(WhatsAppMessage.timestamp.desc()).offset(skip).limit(limit).all()
+    return messages
+
+
+@app.get("/messages/contact/{wa_id}", response_model=List[WhatsAppMessageRead])
+async def get_messages_by_wa_id(
+    wa_id: str,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """Get all messages for a specific WhatsApp contact"""
+    contact = db.query(WhatsAppContact).filter(
+        WhatsAppContact.wa_id == wa_id
+    ).first()
+    
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    
+    messages = db.query(WhatsAppMessage).filter(
+        WhatsAppMessage.contact_id == contact.id
+    ).order_by(WhatsAppMessage.timestamp.desc()).offset(skip).limit(limit).all()
+    
+    return messages
+
+
+@app.patch("/messages/{message_id}/read")
+async def mark_message_as_read(message_id: int, db: Session = Depends(get_db)):
+    """Mark a message as read"""
+    message = db.query(WhatsAppMessage).filter(WhatsAppMessage.id == message_id).first()
+    
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    message.is_read = True
+    db.commit()
+    
+    return {"status": "success", "message": "Message marked as read"}

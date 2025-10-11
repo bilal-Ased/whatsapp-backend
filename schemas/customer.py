@@ -198,3 +198,59 @@ class PaymentCreate(BaseModel):
 
 class PaymentStatusUpdate(BaseModel):
     status: str
+    
+    
+    
+    
+    
+class WhatsAppContactBase(BaseModel):
+    wa_id: str
+    profile_name: Optional[str] = None
+    phone_number: Optional[str] = None
+
+class WhatsAppContactCreate(WhatsAppContactBase):
+    pass
+
+class WhatsAppContactRead(WhatsAppContactBase):
+    id: int
+    is_blocked: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WhatsAppMessageBase(BaseModel):
+    message_id: str
+    from_number: str
+    to_number: Optional[str] = None
+    message_type: str
+    message_body: Optional[str] = None
+    media_url: Optional[str] = None
+    timestamp: datetime
+
+class WhatsAppMessageCreate(WhatsAppMessageBase):
+    contact_id: int
+
+class WhatsAppMessageRead(WhatsAppMessageBase):
+    id: int
+    contact_id: int
+    is_read: bool
+    direction: str
+    status: str
+    created_at: datetime
+    contact: Optional[WhatsAppContactRead] = None
+
+    class Config:
+        from_attributes = True
+
+
+class WebhookPayload(BaseModel):
+    profile_name: str
+    wa_id: str
+    message_id: str
+    from_number: str
+    timestamp: str
+    message_type: str
+    message_body: Optional[str] = None
