@@ -110,6 +110,63 @@ def create_tenant(data: TenantModel, db: Session = Depends(get_db)):
 
     return {"message": "New tenant created", "new_tenant_id": new_tenant.id}
 
+
+
+
+@app.put("/update-tenant/{tenant_id}")
+def update_tenant(tenant_id: int, data: TenantModel, db: Session = Depends(get_db)):
+    # Check if tenant exists
+    tenant = db.query(Tenants).filter(Tenants.id == tenant_id).first()
+    
+    if not tenant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tenant with ID {tenant_id} not found."
+        )
+    
+    # Update tenant fields with provided data
+    update_data = data.dict(exclude_unset=True, exclude={'id', 'created_at', 'updated_at'})
+    
+    for key, value in update_data.items():
+        setattr(tenant, key, value)
+    
+    try:
+        db.commit()
+        db.refresh(tenant)
+    except IntegrityError as e:
+        db.rollback()
+        error_message = str(e.orig)
+        if isinstance(e.orig, Exception):
+            if "unique constraint" in error_message.lower() or "duplicate entry" in error_message.lower():
+                if "email" in error_message.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Email already exists. Please use a different email."
+                    )
+                elif "phone" in error_message.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Phone number already exists. Please use a different phone number."
+                    )
+            else:
+                # Generic error for other integrity issues
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="An error occurred while updating the tenant. Please try again."
+                )
+    
+    return {
+        "message": "Tenant updated successfully",
+        "tenant_id": tenant.id,
+        "updated_data": {
+            "first_name": tenant.first_name,
+            "last_name": tenant.last_name,
+            "email": tenant.email,
+            "phone": tenant.phone,
+            "emergency_contact": tenant.emergency_contact
+        }
+    }
+    
 @app.get("/tenants-list")
 def get_tenants(
     db: Session = Depends(get_db),
