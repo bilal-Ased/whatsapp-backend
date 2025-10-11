@@ -33,7 +33,8 @@ from schemas.customer import (
     WhatsAppMessageRead,
     WhatsAppMessageCreate,
     SendMessageResponse,
-    SendMessageRequest
+    SendMessageRequest,
+    SendImageMessageRequest
 )
 from sqlalchemy.exc import IntegrityError
 from typing import Optional,List
@@ -2285,11 +2286,9 @@ async def send_whatsapp_message(
         )
 
 
-@app.post("/send-message-with-image")
+@app.post("/send-message-with-image", response_model=SendImageMessageResponse)
 async def send_whatsapp_message_with_image(
-    to: str,
-    caption: str = None,
-    image_url: str = None,
+    body: SendImageMessageRequest,
     db: Session = Depends(get_db)
 ):
     """Send a WhatsApp message with an image"""
@@ -2299,54 +2298,55 @@ async def send_whatsapp_message_with_image(
             "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": to,
+            "to": body.to,
             "type": "image",
             "image": {
-                "link": image_url,
-                "caption": caption
+                "link": body.image_url,
+                "caption": body.caption
             }
         }
-        
+
         async with httpx.AsyncClient() as client:
             response = await client.post(url, json=payload, headers=headers)
             response_data = response.json()
-        
+
         if response.status_code == 200:
             message_id = response_data.get("messages", [{}])[0].get("id")
-            
-            # Store in database
+
+            # Store message in database
             contact = db.query(WhatsAppContact).filter(
-                WhatsAppContact.wa_id == to
+                WhatsAppContact.wa_id == body.to
             ).first()
-            
+
             if contact:
                 new_message = WhatsAppMessage(
                     message_id=message_id,
                     contact_id=contact.id,
                     from_number=WHATSAPP_PHONE_NUMBER_ID,
-                    to_number=to,
+                    to_number=body.to,
                     message_type="image",
-                    message_body=caption,
-                    media_url=image_url,
+                    message_body=body.caption,
+                    media_url=body.image_url,
                     timestamp=datetime.now(),
                     direction="outbound",
                     status="sent"
                 )
                 db.add(new_message)
                 db.commit()
-            
-            return {"success": True, "message_id": message_id}
+
+            return SendImageMessageResponse(success=True, message_id=message_id)
+
         else:
             error_message = response_data.get("error", {}).get("message", "Unknown error")
-            return {"success": False, "error": error_message}
-            
+            return SendImageMessageResponse(success=False, error=error_message)
+
     except Exception as e:
         print(f"❌ Error sending image: {str(e)}")
-        return {"success": False, "error": str(e)}
+        return SendImageMessageResponse(success=False, error=str(e))
 
 
 
