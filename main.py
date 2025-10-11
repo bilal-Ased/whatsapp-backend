@@ -69,6 +69,7 @@ import logging
 from sqlalchemy import or_, cast, String
 from sqlalchemy import func, select
 from database import engine
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 
 
@@ -2346,3 +2347,29 @@ async def send_whatsapp_message_with_image(
     except Exception as e:
         print(f"❌ Error sending image: {str(e)}")
         return {"success": False, "error": str(e)}
+
+
+
+@app.get("/webhook/nylas")
+async def nylas_webhook_challenge(request: Request):
+    """
+    Handle the webhook challenge from Nylas.
+    Nylas will send a GET request with a 'challenge' query parameter.
+    You must respond with the same value as plain text.
+    """
+    challenge = request.query_params.get("challenge")
+    if challenge:
+        return PlainTextResponse(content=challenge, status_code=200)
+    return JSONResponse({"error": "Missing challenge parameter"}, status_code=400)
+
+
+@app.post("/webhook/nylas")
+async def nylas_webhook_events(request: Request):
+    """
+    Handle incoming webhook events from Nylas (POST requests).
+    These are sent when a message, calendar, etc., changes.
+    """
+    payload = await request.json()
+    print("Received Nylas webhook event:", payload)
+    # You can process or store the event here as needed
+    return JSONResponse({"success": True})
