@@ -31,7 +31,6 @@ from schemas.customer import (
     WhatsAppContactRead,
     WhatsAppContactCreate,
     WhatsAppMessageRead,
-    WhatsAppMessageCreate,
     SendMessageResponse,
     SendMessageRequest,
     SendImageMessageRequest
