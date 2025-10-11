@@ -2,11 +2,37 @@ from fastapi import FastAPI, Depends, Query,Request
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import Tenants,Properties,User,Leases,Email,EmailAttachment,EmailParticipant,Payments,PaymentSchedule
+from models import (
+    Tenants,
+    Properties,
+    User,
+    Leases,
+    Email,
+    EmailAttachment,
+    EmailParticipant,
+    Payments,
+    PaymentSchedule,
+    WhatsAppContact,
+    WhatsAppMessage
+)
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import joinedload
 from fastapi.middleware.cors import CORSMiddleware
-from schemas.customer import TenantModel,PropertyModel,UserCreate,UserLogin,LeaseBase,LeaseWithDetails,EmailRead,PaymentCreate,UserRead,WhatsAppContact,WhatsAppMessage,WhatsAppMessageRead,WhatsAppContactRead
+from schemas.customer import (
+    TenantModel,
+    PropertyModel,
+    UserCreate,
+    UserLogin,
+    LeaseBase,
+    LeaseWithDetails,
+    EmailRead,
+    PaymentCreate,
+    UserRead,
+    WhatsAppContactRead,
+    WhatsAppContactCreate,
+    WhatsAppMessageRead,
+    WhatsAppMessageCreate
+)
 from sqlalchemy.exc import IntegrityError
 from typing import Optional,List
 from sqlalchemy import func, and_, or_

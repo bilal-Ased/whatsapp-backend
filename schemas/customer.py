@@ -201,8 +201,6 @@ class PaymentStatusUpdate(BaseModel):
     
     
     
-    
-    
 class WhatsAppContactBase(BaseModel):
     wa_id: str
     profile_name: Optional[str] = None
@@ -221,6 +219,7 @@ class WhatsAppContactRead(WhatsAppContactBase):
         from_attributes = True
 
 
+# WhatsApp Message Schemas
 class WhatsAppMessageBase(BaseModel):
     message_id: str
     from_number: str
@@ -244,13 +243,3 @@ class WhatsAppMessageRead(WhatsAppMessageBase):
 
     class Config:
         from_attributes = True
-
-
-class WebhookPayload(BaseModel):
-    profile_name: str
-    wa_id: str
-    message_id: str
-    from_number: str
-    timestamp: str
-    message_type: str
-    message_body: Optional[str] = None
