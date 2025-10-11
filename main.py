@@ -31,7 +31,9 @@ from schemas.customer import (
     WhatsAppContactRead,
     WhatsAppContactCreate,
     WhatsAppMessageRead,
-    WhatsAppMessageCreate
+    WhatsAppMessageCreate,
+    SendMessageResponse,
+    SendMessageRequest
 )
 from sqlalchemy.exc import IntegrityError
 from typing import Optional,List
@@ -66,12 +68,17 @@ from generate_invoice.invoice import generate_invoice
 import logging
 from sqlalchemy import or_, cast, String
 from sqlalchemy import func, select
+from database import engine
+
 
 
 app = FastAPI()
 
 VERIFY_TOKEN = "123456" 
 
+
+
+    
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -95,6 +102,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+WHATSAPP_API_URL = "https://graph.facebook.com/v21.0"
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "486982054488039")  # Your phone number ID
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "EAANTaTeKBwIBPuffFjytdaoURZCLn2eBJmvpfziAOg0tZCpR3F3SDH8EQjNlQrqQ53q6VbNnMAZBSpigANxxeXKHwJQFcRVtSoxXN92aaQKsjc6m56hGtTJJJ3XVVmXq0mqfZCAtVUG0ogZAlroRbbIntuaLd4u3EHGr5QcEOZA00qpHbjeJqTQJMtzMXX9iE22BoiiRkyxQFybvdZC2wZAIgvEVvYSWnuyiD3DAaDR1NDFwmvXeUa6wMoHtenWYrAZDZD")  # Your access token
 
 
 
@@ -2196,3 +2206,143 @@ async def mark_message_as_read(message_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"status": "success", "message": "Message marked as read"}
+
+
+
+@app.post("/send-message", response_model=SendMessageResponse)
+async def send_whatsapp_message(
+    request: SendMessageRequest,
+    db: Session = Depends(get_db)
+):
+    """Send a WhatsApp message to a contact"""
+    try:
+        # Prepare WhatsApp API request
+        url = f"{WHATSAPP_API_URL}/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": request.to,
+            "type": "text",
+            "text": {
+                "preview_url": False,
+                "body": request.message
+            }
+        }
+        
+        # Send message via WhatsApp API
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, headers=headers)
+            response_data = response.json()
+        
+        if response.status_code == 200:
+            message_id = response_data.get("messages", [{}])[0].get("id")
+            
+            # Store the outbound message in database
+            contact = db.query(WhatsAppContact).filter(
+                WhatsAppContact.wa_id == request.to
+            ).first()
+            
+            if contact:
+                new_message = WhatsAppMessage(
+                    message_id=message_id,
+                    contact_id=contact.id,
+                    from_number=WHATSAPP_PHONE_NUMBER_ID,
+                    to_number=request.to,
+                    message_type="text",
+                    message_body=request.message,
+                    timestamp=datetime.now(),
+                    direction="outbound",
+                    status="sent"
+                )
+                db.add(new_message)
+                db.commit()
+                
+                print(f"✅ Message sent to {request.to}: {request.message}")
+            
+            return SendMessageResponse(
+                success=True,
+                message_id=message_id
+            )
+        else:
+            error_message = response_data.get("error", {}).get("message", "Unknown error")
+            print(f"❌ Failed to send message: {error_message}")
+            return SendMessageResponse(
+                success=False,
+                error=error_message
+            )
+            
+    except Exception as e:
+        print(f"❌ Error sending message: {str(e)}")
+        return SendMessageResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@app.post("/send-message-with-image")
+async def send_whatsapp_message_with_image(
+    to: str,
+    caption: str = None,
+    image_url: str = None,
+    db: Session = Depends(get_db)
+):
+    """Send a WhatsApp message with an image"""
+    try:
+        url = f"{WHATSAPP_API_URL}/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "image",
+            "image": {
+                "link": image_url,
+                "caption": caption
+            }
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, headers=headers)
+            response_data = response.json()
+        
+        if response.status_code == 200:
+            message_id = response_data.get("messages", [{}])[0].get("id")
+            
+            # Store in database
+            contact = db.query(WhatsAppContact).filter(
+                WhatsAppContact.wa_id == to
+            ).first()
+            
+            if contact:
+                new_message = WhatsAppMessage(
+                    message_id=message_id,
+                    contact_id=contact.id,
+                    from_number=WHATSAPP_PHONE_NUMBER_ID,
+                    to_number=to,
+                    message_type="image",
+                    message_body=caption,
+                    media_url=image_url,
+                    timestamp=datetime.now(),
+                    direction="outbound",
+                    status="sent"
+                )
+                db.add(new_message)
+                db.commit()
+            
+            return {"success": True, "message_id": message_id}
+        else:
+            error_message = response_data.get("error", {}).get("message", "Unknown error")
+            return {"success": False, "error": error_message}
+            
+    except Exception as e:
+        print(f"❌ Error sending image: {str(e)}")
+        return {"success": False, "error": str(e)}

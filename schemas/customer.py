@@ -243,3 +243,14 @@ class WhatsAppMessageRead(WhatsAppMessageBase):
 
     class Config:
         from_attributes = True
+        
+        
+class SendMessageRequest(BaseModel):
+    to: str  # Recipient's WhatsApp number (wa_id)
+    message: str
+    message_type: str = "text"
+
+class SendMessageResponse(BaseModel):
+    success: bool
+    message_id: Optional[str] = None
+    error: Optional[str] = None
