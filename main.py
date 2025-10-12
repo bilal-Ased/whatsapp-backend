@@ -33,7 +33,8 @@ from schemas.customer import (
     WhatsAppMessageRead,
     SendMessageResponse,
     SendMessageRequest,
-    SendImageMessageRequest
+    SendImageMessageRequest,
+    SendImageMessageResponse
 )
 from sqlalchemy.exc import IntegrityError
 from typing import Optional,List

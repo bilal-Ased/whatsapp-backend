@@ -261,3 +261,10 @@ class SendImageMessageRequest(BaseModel):
     to: str  # Recipient WhatsApp number
     image_url: str  # Direct link to the image
     caption: Optional[str] = None
+
+
+
+class SendImageMessageResponse(BaseModel):
+    success: bool
+    message_id: Optional[str] = None
+    error: Optional[str] = None
