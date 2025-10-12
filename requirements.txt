@@ -12,3 +12,4 @@ PyPDF2==3.0.1
 reportlab==4.0.7
 bcrypt==4.0.1
 passlib==1.7.4
+pusher==3.3.2
