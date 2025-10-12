@@ -71,7 +71,7 @@ from sqlalchemy import or_, cast, String
 from sqlalchemy import func, select
 from database import engine
 from fastapi.responses import JSONResponse, PlainTextResponse
-
+import pusher
 
 
 app = FastAPI()
@@ -109,6 +109,13 @@ WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "48698205448803
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "EAANTaTeKBwIBPi0h1jAqcEKW7AjLG2sPGCDouOQRWUjSZB4Go1OZBkCd8dZA4GkJIWcwIadkxwmy6l5XClJ7U6GqNwBC7ZBK7pQ8y9VSFto6VV8boJPcle8GhMpv7Gdw2rUWl1jgzUlicAFqjkciwo0Nb0l5P15AH2FeVU7ZBvNdimaJZAXvADzcQfyNJFqulbhgow34vmEITUGICjZA3iPnqRtBgD5kF6tvEBZCsBR50nZA7vPZAW21ErXuCo4nNmXAZDZD")  # Your access token
 
 
+pusher_client = pusher.Pusher(
+    app_id='2062562',
+    key='1207b7f8fb33339970f1',
+    secret='37a7493866c072cdf272',
+    cluster='mt1',
+    ssl=True
+)
 
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
@@ -2007,6 +2014,55 @@ async def get_property_demographics(db: Session = Depends(get_db)):
         )
 
 
+def trigger_new_message(message_data: dict):
+    """
+    Trigger a new message event to all connected clients
+    Call this function when you receive a new WhatsApp message
+    """
+    try:
+        pusher_client.trigger(
+            'whatsapp-messages',  # channel name
+            'new-message',  # event name
+            {'message': message_data}
+        )
+        print(f"✅ Pushed new message to Pusher: {message_data.get('message_id')}")
+    except Exception as e:
+        print(f"❌ Pusher error: {e}")
+
+
+def trigger_message_status(message_id: str, status: str):
+    """
+    Trigger a message status update
+    Call this when message status changes (delivered, read, etc.)
+    """
+    try:
+        pusher_client.trigger(
+            'whatsapp-messages',
+            'message-status',
+            {
+                'message_id': message_id,
+                'status': status
+            }
+        )
+        print(f"✅ Pushed status update to Pusher: {message_id} -> {status}")
+    except Exception as e:
+        print(f"❌ Pusher error: {e}")
+
+
+def trigger_new_contact():
+    """
+    Trigger a new contact event
+    Call this when a new contact is added
+    """
+    try:
+        pusher_client.trigger(
+            'whatsapp-messages',
+            'new-contact',
+            {}
+        )
+        print(f"✅ Pushed new contact notification to Pusher")
+    except Exception as e:
+        print(f"❌ Pusher error: {e}")
 
 
 @app.get("/webhooks")
@@ -2043,6 +2099,8 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
                     
                     # Get contact info
                     contacts = value.get("contacts", [])
+                    new_contact_created = False  # Track if new contact
+                    
                     if contacts:
                         contact_info = contacts[0]
                         wa_id = contact_info.get("wa_id")
@@ -2062,6 +2120,7 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
                             db.add(contact)
                             db.commit()
                             db.refresh(contact)
+                            new_contact_created = True  # ← Mark as new contact
                         elif profile_name and contact.profile_name != profile_name:
                             contact.profile_name = profile_name
                             db.commit()
@@ -2123,6 +2182,28 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
                             )
                             db.add(new_message)
                             db.commit()
+                            db.refresh(new_message)  # ← Get the ID
+                            
+                            # ✨ TRIGGER PUSHER EVENT - This is the key addition!
+                            trigger_new_message({
+                                "id": new_message.id,
+                                "message_id": new_message.message_id,
+                                "contact_id": new_message.contact_id,
+                                "from_number": new_message.from_number,
+                                "to_number": new_message.to_number,
+                                "message_type": new_message.message_type,
+                                "message_body": new_message.message_body,
+                                "media_url": new_message.media_url,
+                                "timestamp": new_message.timestamp.isoformat(),
+                                "is_read": new_message.is_read,
+                                "direction": new_message.direction,
+                                "status": new_message.status,
+                                "created_at": new_message.created_at.isoformat()
+                            })
+                            
+                            # ✨ If this was a new contact, trigger that event too
+                            if new_contact_created:
+                                trigger_new_contact()
         
         # Always return 200 OK so Meta knows you received it
         return JSONResponse(content={"status": "received"}, status_code=200)
