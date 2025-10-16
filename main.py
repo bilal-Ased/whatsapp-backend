@@ -105,8 +105,8 @@ logger = logging.getLogger(__name__)
 
 
 WHATSAPP_API_URL = "https://graph.facebook.com/v21.0"
-WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "839289019260726")  # Your phone number ID
-WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "mDzzhgeaILBc8rBIR2FbGkB1RYXVU3Ik82kF7bVGEuI")  # Your access token
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "486982054488039")  # Your phone number ID
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "EAANTaTeKBwIBPi0h1jAqcEKW7AjLG2sPGCDouOQRWUjSZB4Go1OZBkCd8dZA4GkJIWcwIadkxwmy6l5XClJ7U6GqNwBC7ZBK7pQ8y9VSFto6VV8boJPcle8GhMpv7Gdw2rUWl1jgzUlicAFqjkciwo0Nb0l5P15AH2FeVU7ZBvNdimaJZAXvADzcQfyNJFqulbhgow34vmEITUGICjZA3iPnqRtBgD5kF6tvEBZCsBR50nZA7vPZAW21ErXuCo4nNmXAZDZD")  # Your access token
 
 
 pusher_client = pusher.Pusher(
